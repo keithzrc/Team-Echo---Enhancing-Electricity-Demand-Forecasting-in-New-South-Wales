@@ -19,9 +19,13 @@ output: html_document
 
 # 2.0 Literature Review
 
-## 2.1 Industry
+## 2.1 Industry/Operational Context
 
-## 2.2 
+## 2.2 Research Topic
+
+## 2.3 Regression Analysis
+
+### 2.3.1 
 
 ---
 
