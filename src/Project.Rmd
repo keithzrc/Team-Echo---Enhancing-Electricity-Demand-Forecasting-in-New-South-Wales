@@ -124,21 +124,172 @@ data_temperature_qld <- read_csv(here("/Users/josephrobertmelbin/Documents/GitHu
 data_demand_qld <- read_csv(here("/Users/josephrobertmelbin/Documents/GitHub/Project2/data/Australia/d/totaldemand_qld.csv"))
 
 # NSW
+data_forecastdemand_nsw <- read_csv(here("/Users/josephrobertmelbin/Documents/GitHub/Project2/data/NSW/forecastdemand_nsw.csv"))
 
+data_temperature_nsw <-  read_csv(here("/Users/josephrobertmelbin/Documents/GitHub/Project2/data/NSW/temperature_nsw.csv"))
+
+data_demand_nsw <-  read_csv(here("/Users/josephrobertmelbin/Documents/GitHub/Project2/data/NSW/totaldemand_nsw.csv"))
 
 ```
 
 ### 4.2.2 Sourced Data
 
-``` {r}
 
-```
 
 ## 4.3 Initial Data Inspection
 
+``` {r}
+# Generate Some Useful Functions
 
+# check for null values
+check_for_na <- function(data) {
+  for (col_index in seq_along(data)) {
+    has_na <- any(is.na(data[[col_index]]))
+    cat("Column", col_index, "has NA values:", has_na, "\n")
+  }
+}
+
+# check for unique values
+#check_unique_entries <- function(data) {
+#  unique_entries_list <- list()
+#  for (col_name in names(data)) {
+#    unique_entries <- unique(data[[col_name]])
+#    unique_entries_list[[col_name]] <- unique_entries
+#  }
+#  return(unique_entries_list)
+#}
+
+```
+
+``` {r}
+# VIC
+# check structure
+str(data_forecastdemand_vic)
+str(data_temperature_vic)
+str(data_demand_vic)
+
+# check for null values
+check_for_na(data_forecastdemand_vic)
+check_for_na(data_temperature_vic)
+check_for_na(data_demand_vic)
+
+# check character data types for uniqueness
+unique(data_forecastdemand_vic$REGIONID)
+unique(data_temperature_vic$LOCATION)
+unique(data_demand_vic$REGIONID) # ensure REGIONID matches
+```
+
+``` {r}
+# SA
+# check structure
+str(data_forecastdemand_sa)
+str(data_temperature_sa)
+str(data_demand_sa)
+
+# check for null values
+check_for_na(data_forecastdemand_sa)
+check_for_na(data_temperature_sa)
+check_for_na(data_demand_sa)
+
+# check character data types for uniqueness
+unique(data_forecastdemand_sa$REGIONID)
+unique(data_temperature_sa$LOCATION)
+unique(data_demand_sa$REGIONID) # ensure REGIONID matches
+```
+
+``` {r}
+# QLD
+# check structure
+str(data_forecastdemand_qld)
+str(data_temperature_qld)
+str(data_demand_qld)
+
+# check for null values
+check_for_na(data_forecastdemand_qld)
+check_for_na(data_temperature_qld)
+check_for_na(data_demand_qld)
+
+# check character data types for uniqueness
+unique(data_forecastdemand_qld$REGIONID)
+unique(data_temperature_qld$LOCATION)
+unique(data_demand_qld$REGIONID) # ensure REGIONID matches
+```
+
+``` {r}
+# NSW
+# check structure
+str(data_forecastdemand_nsw)
+str(data_temperature_nsw)
+str(data_demand_nsw)
+
+# check for null values
+check_for_na(data_forecastdemand_nsw)
+check_for_na(data_temperature_nsw)
+check_for_na(data_demand_nsw)
+
+# check character data types for uniqueness
+unique(data_forecastdemand_nsw$REGIONID)
+unique(data_temperature_nsw$LOCATION)
+unique(data_demand_nsw$REGIONID) # ensure REGIONID matches
+```
 
 ## 4.4 Summary Statistics
+
+``` {r}
+# detect outliers, based on z score
+detect_outliers <- function(data) {
+  z_scores <- scale(data)
+  outliers <- abs(z_scores) > 3
+  return(outliers)
+}
+
+# detect outliers, based on modified z score
+detect_modified_outliers <- function(data) {
+  median_val <- median(data)
+  mad_val <- mad(data)
+  modified_z_scores <- (data - median_val) / mad_val
+  outliers_modified <- abs(modified_z_scores) > 3.5
+  return(outliers_modified)
+}
+
+```
+
+``` {r}
+# VIC
+
+summary(data_forecastdemand_vic)
+summary(data_temperature_vic)
+summary(data_demand_vic)
+
+boxplot(data_forecastdemand_vic$FORECASTDEMAND)
+boxplot(data_temperature_vic$TEMPERATURE)
+boxplot(data_demand_vic$TOTALDEMAND)
+
+hist(data_forecastdemand_vic$FORECASTDEMAND)
+hist(data_temperature_vic$TEMPERATURE)
+hist(data_demand_vic$TOTALDEMAND)
+
+#data_forecastdemand_vic_z_scores <- scale(data_forecastdemand_vic$FORECASTDEMAND)
+#data_forecastdemand_vic_outliers <- abs(data_forecastdemand_vic_z_scores) > 3
+#data_forecastdemand_vic_outliers_true <- data_forecastdemand_vic_outliers[data_forecastdemand_vic_outliers == TRUE]
+#print(data_forecastdemand_vic_outliers == TRUE)
+
+detect_outliers(data_forecastdemand_vic$FORECASTDEMAND)
+
+```
+
+``` {r}
+
+
+
+```
+
+``` {r}
+```
+
+``` {r}
+```
+
 ## 4.5 Data Visualisation
 
 ``` {r} 
@@ -149,8 +300,11 @@ ggplot(data_demand_qld, aes(x = DATETIME, y = TOTALDEMAND)) +
 ```
 
 ## 4.6 Data Relationships
+
 ## 4.7 Outlier Detection
+
 ## 4.8 Feature Detecting
+
 ## 4.9 Findings
 
 ---
