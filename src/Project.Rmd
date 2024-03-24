@@ -101,24 +101,30 @@ circumstances.
 ``` {r}
 
 # Load Data
+
+# VIC
 data_forecastdemand_vic <- read_csv(here("/Users/josephrobertmelbin/Documents/GitHub/Project2/data/Australia/a/forecastdemand_vic.csv"))
 
 data_temperature_vic <- read_csv(here("/Users/josephrobertmelbin/Documents/GitHub/Project2/data/Australia/d/temprature_vic.csv"))
 
 data_demand_vic <- read_csv(here("/Users/josephrobertmelbin/Documents/GitHub/Project2/data/Australia/d/totaldemand_vic.csv"))
 
+# SA
 data_forecastdemand_sa <- read_csv(here("/Users/josephrobertmelbin/Documents/GitHub/Project2/data/Australia/b/forecastdemand_sa.csv"))
 
 data_temperature_sa <- read_csv(here("/Users/josephrobertmelbin/Documents/GitHub/Project2/data/Australia/d/temprature_sa.csv"))
 
 data_demand_sa <- read_csv(here("/Users/josephrobertmelbin/Documents/GitHub/Project2/data/Australia/d/totaldemand_sa.csv"))
 
-
+# QLD
 data_forecastdemand_qld <- read_csv(here("/Users/josephrobertmelbin/Documents/GitHub/Project2/data/Australia/c/forecastdemand_qld.csv"))
 
 data_temperature_qld <- read_csv(here("/Users/josephrobertmelbin/Documents/GitHub/Project2/data/Australia/d/temprature_qld.csv"))
 
 data_demand_qld <- read_csv(here("/Users/josephrobertmelbin/Documents/GitHub/Project2/data/Australia/d/totaldemand_qld.csv"))
+
+# NSW
+
 
 ```
 
@@ -129,6 +135,9 @@ data_demand_qld <- read_csv(here("/Users/josephrobertmelbin/Documents/GitHub/Pro
 ```
 
 ## 4.3 Initial Data Inspection
+
+
+
 ## 4.4 Summary Statistics
 ## 4.5 Data Visualisation
 
