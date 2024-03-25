@@ -79,6 +79,8 @@ output: html_document
 library(readr)
 library(here)
 library(ggplot2)
+library(dplyr)
+library(lubridate)
 
 ```
 
@@ -252,6 +254,10 @@ detect_modified_outliers <- function(data) {
   return(outliers_modified)
 }
 
+
+
+
+
 ```
 
 ``` {r}
@@ -279,15 +285,18 @@ detect_outliers(data_forecastdemand_vic$FORECASTDEMAND)
 ```
 
 ``` {r}
-
-
+# SA
 
 ```
 
 ``` {r}
+# QLD
+
 ```
 
 ``` {r}
+# NSW
+
 ```
 
 ## 4.5 Data Visualisation
@@ -300,6 +309,80 @@ ggplot(data_demand_qld, aes(x = DATETIME, y = TOTALDEMAND)) +
 ```
 
 ## 4.6 Data Relationships
+
+``` {r}
+# generate columns based on elements of time
+# demand and forecast time series data format
+extract_forecast_datetime_components <- function(data, datetime_column) {
+  data %>%
+    mutate(
+      year = as.numeric(format({{ datetime_column }}, "%Y")),
+      month = as.numeric(format({{ datetime_column }}, "%m")),
+      day = as.numeric(format({{ datetime_column }}, "%d")),
+      hour = as.numeric(format({{ datetime_column }}, "%H")),
+      minute = as.numeric(format({{ datetime_column }}, "%M")),
+      second = as.numeric(format({{ datetime_column }}, "%S"))
+    )
+}
+
+# nsw demand time series data format
+extract_nsw_demand_datetime_components <- function(data) {
+  # Convert DATETIME column to POSIXct
+  data$DATETIME <- as.POSIXct(data$DATETIME, format = "%d/%m/%Y %H:%M")
+  
+  # Extract datetime components
+  data$day <- day(data$DATETIME)
+  data$month <- month(data$DATETIME)
+  data$year <- year(data$DATETIME)
+  data$hour <- hour(data$DATETIME)
+  data$minute <- minute(data$DATETIME)
+  data$second <- second(data$DATETIME)
+  
+  return(data)
+}
+
+# temperate time series data format
+extract_temperature_datetime_components <- function(data) {
+  # Convert DATETIME column to POSIXct
+  data$DATETIME <- as.POSIXct(data$DATETIME, format = "%d/%m/%Y %H:%M")
+  
+  # Extract datetime components
+  data$day <- day(data$DATETIME)
+  data$month <- month(data$DATETIME)
+  data$year <- year(data$DATETIME)
+  data$hour <- hour(data$DATETIME)
+  data$minute <- minute(data$DATETIME)
+  data$second <- second(data$DATETIME)
+  
+  return(data)
+}
+
+```
+
+``` {r}
+# split data time stamps into constituent components
+# forecast
+new_timestamp_format_data_forecastdemand_vic <- extract_datetime_components(data_forecastdemand_vic, DATETIME)
+new_timestamp_format_data_forecastdemand_sa <- extract_datetime_components(data_forecastdemand_sa, DATETIME)
+new_timestamp_format_data_forecastdemand_qld <- extract_datetime_components(data_forecastdemand_qld, DATETIME)
+new_timestamp_format_data_forecastdemand_nsw <- extract_datetime_components(data_forecastdemand_nsw, DATETIME)
+
+# demand
+new_timestamp_format_data_demand_vic <- extract_datetime_components(data_demand_vic, DATETIME)
+new_timestamp_format_data_demand_sa <- extract_datetime_components(data_demand_sa, DATETIME)
+new_timestamp_format_data_demand_qld <- extract_datetime_components(data_demand_qld, DATETIME)
+# need a unique function for nsw
+new_timestamp_format_data_demand_nsw <- extract_nsw_demand_datetime_components(data_demand_nsw)
+
+# temperature
+new_timestamp_format_data_temperature_vic <- extract_temperature_datetime_components(data_temperature_vic)
+new_timestamp_format_data_temperature_sa <- extract_temperature_datetime_components(data_temperature_sa)
+new_timestamp_format_data_temperature_qld <- extract_temperature_datetime_components(data_temperature_qld)
+new_timestamp_format_data_temperature_nsw <- extract_temperature_datetime_components(data_temperature_nsw)
+
+```
+
+
 
 ## 4.7 Outlier Detection
 
