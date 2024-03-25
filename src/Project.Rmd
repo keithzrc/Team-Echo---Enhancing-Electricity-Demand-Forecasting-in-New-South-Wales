@@ -379,10 +379,70 @@ new_timestamp_format_data_temperature_vic <- extract_temperature_datetime_compon
 new_timestamp_format_data_temperature_sa <- extract_temperature_datetime_components(data_temperature_sa)
 new_timestamp_format_data_temperature_qld <- extract_temperature_datetime_components(data_temperature_qld)
 new_timestamp_format_data_temperature_nsw <- extract_temperature_datetime_components(data_temperature_nsw)
+```
+
+``` {r}
+# filter data to the same half hour intervals
+
+generate_subsets <- function(data) {
+  # Create an empty list to store results
+  subset_list <- list()
+  
+  # Loop through each hour
+  for (hour in 0:23) {
+    # Loop through each minute (0 and 30)
+    for (minute in c(0, 30)) {
+      # Define condition for current hour and minute
+      condition <- data$hour == hour & data$minute == minute
+      
+      # Subset data based on condition
+      subset <- data[condition, ]
+      
+      # Store the result in the list
+      subset_list[[paste0(hour, "_", minute)]] <- subset
+    }
+  }
+  
+  # Return the list of subsets
+  return(subset_list)
+}
 
 ```
 
+``` {r}
 
+# Call the function with the dataframe
+# vic
+vic_forecast_subsets <- generate_subsets(new_timestamp_format_data_forecastdemand_vic)
+vic_temperature_subsets <- generate_subsets(new_timestamp_format_data_temperature_vic)
+vic_demand_subsets <- generate_subsets(new_timestamp_format_data_demand_vic)
+#vic_demand_subsets[["5_30"]]
+
+# sa
+sa_forecast_subsets <- generate_subsets(new_timestamp_format_data_forecastdemand_sa)
+sa_temperature_subsets <- generate_subsets(new_timestamp_format_data_temperature_sa)
+sa_demand_subsets <- generate_subsets(new_timestamp_format_data_demand_sa)
+
+# qld
+qld_forecast_subsets <- generate_subsets(new_timestamp_format_data_forecastdemand_qld)
+qld_temperature_subsets <- generate_subsets(new_timestamp_format_data_temperature_qld)
+qld_demand_subsets <- generate_subsets(new_timestamp_format_data_demand_qld)
+
+# nsw
+nsw_forecast_subsets <- generate_subsets(new_timestamp_format_data_forecastdemand_nsw)
+nsw_temperature_subsets <- generate_subsets(new_timestamp_format_data_temperature_nsw)
+nsw_demand_subsets <- generate_subsets(new_timestamp_format_data_demand_nsw)
+
+```
+
+``` {r}
+
+vic_demand_5_30 <- vic_demand_subsets[["5_30"]]
+vic_demand_5_30$DATETIME <- as.character(vic_demand_5_30$DATETIME)
+vic_temperature_5_30 <- vic_temperature_subsets[["5_30"]]
+vic_temperature_5_30$DATETIME <- as.character(vic_temperature_5_30$DATETIME)
+
+```
 
 ## 4.7 Outlier Detection
 
