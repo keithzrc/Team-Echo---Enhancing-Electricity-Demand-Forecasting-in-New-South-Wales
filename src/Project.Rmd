@@ -76,11 +76,28 @@ output: html_document
 
 ```{r}
 
+install.packages("readr")
+install.packages("here")
+install.packages("ggplot2")
+install.packages("tidyverse")
+install.packages("lubridate")
+install.packages("mgcv")
+
+```
+
+
+
+```{r}
+
 library(readr)
 library(here)
 library(ggplot2)
-library(dplyr)
+library(tidyverse)
 library(lubridate)
+library(mgcv)
+library(fpp2)
+library(fable)
+library(feasts)
 
 ```
 
@@ -104,33 +121,30 @@ circumstances.
 
 # Load Data
 
+# Adjusting the paths according to the Github structure:
+
 # VIC
-data_forecastdemand_vic <- read_csv(here("/Users/josephrobertmelbin/Documents/GitHub/Project2/data/Australia/a/forecastdemand_vic.csv"))
-
-data_temperature_vic <- read_csv(here("/Users/josephrobertmelbin/Documents/GitHub/Project2/data/Australia/d/temprature_vic.csv"))
-
-data_demand_vic <- read_csv(here("/Users/josephrobertmelbin/Documents/GitHub/Project2/data/Australia/d/totaldemand_vic.csv"))
+data_forecastdemand_vic <- read_csv(unzip("../data/Australia/a.zip", files = "a/forecastdemand_vic.csv", exdir = tempdir())[1])
+data_temperature_vic <- read_csv(unzip("../data/Australia/d.zip", files = "d/temprature_vic.csv", exdir = tempdir())[1])
+data_demand_vic <- read_csv(unzip("../data/Australia/d.zip", files = "d/totaldemand_vic.csv", exdir = tempdir())[1])
 
 # SA
-data_forecastdemand_sa <- read_csv(here("/Users/josephrobertmelbin/Documents/GitHub/Project2/data/Australia/b/forecastdemand_sa.csv"))
-
-data_temperature_sa <- read_csv(here("/Users/josephrobertmelbin/Documents/GitHub/Project2/data/Australia/d/temprature_sa.csv"))
-
-data_demand_sa <- read_csv(here("/Users/josephrobertmelbin/Documents/GitHub/Project2/data/Australia/d/totaldemand_sa.csv"))
+data_forecastdemand_sa <- read_csv(unzip("../data/Australia/b.zip", files = "b/forecastdemand_sa.csv", exdir = tempdir())[1])
+data_temperature_sa <- read_csv(unzip("../data/Australia/d.zip", files = "d/temprature_sa.csv", exdir = tempdir())[1])
+data_demand_sa <- read_csv(unzip("../data/Australia/d.zip", files = "d/totaldemand_sa.csv", exdir = tempdir())[1])
 
 # QLD
-data_forecastdemand_qld <- read_csv(here("/Users/josephrobertmelbin/Documents/GitHub/Project2/data/Australia/c/forecastdemand_qld.csv"))
+data_forecastdemand_qld <- read_csv(unzip("../data/Australia/c.zip", files = "c/forecastdemand_qld.csv", exdir = tempdir())[1])
+data_temperature_qld <- read_csv(unzip("../data/Australia/d.zip", files = "d/temprature_qld.csv", exdir = tempdir())[1])
+data_demand_qld <- read_csv(unzip("../data/Australia/d.zip", files = "d/totaldemand_qld.csv", exdir = tempdir())[1])
 
-data_temperature_qld <- read_csv(here("/Users/josephrobertmelbin/Documents/GitHub/Project2/data/Australia/d/temprature_qld.csv"))
 
-data_demand_qld <- read_csv(here("/Users/josephrobertmelbin/Documents/GitHub/Project2/data/Australia/d/totaldemand_qld.csv"))
 
 # NSW
-data_forecastdemand_nsw <- read_csv(here("/Users/josephrobertmelbin/Documents/GitHub/Project2/data/NSW/forecastdemand_nsw.csv"))
+#data_forecastdemand_nsw <- read_csv(here("/Users/josephrobertmelbin/Documents/GitHub/Project2/data/NSW/forecastdemand_nsw.csv"))
+data_temperature_nsw <- read_csv(unzip("../data/NSW/temperature_nsw.csv.zip", files = "temperature_nsw.csv", exdir = tempdir())[1])
+data_demand_nsw <- read_csv(unzip("../data/NSW/totaldemand_nsw.csv.zip", files = "totaldemand_nsw.csv", exdir = tempdir())[1])
 
-data_temperature_nsw <-  read_csv(here("/Users/josephrobertmelbin/Documents/GitHub/Project2/data/NSW/temperature_nsw.csv"))
-
-data_demand_nsw <-  read_csv(here("/Users/josephrobertmelbin/Documents/GitHub/Project2/data/NSW/totaldemand_nsw.csv"))
 
 ```
 
@@ -138,7 +152,7 @@ data_demand_nsw <-  read_csv(here("/Users/josephrobertmelbin/Documents/GitHub/Pr
 
 
 
-## 4.3 Initial Data Inspection
+## 4.3.1 Initial Data Inspection
 
 ``` {r}
 # Generate Some Useful Functions
@@ -235,6 +249,41 @@ unique(data_temperature_nsw$LOCATION)
 unique(data_demand_nsw$REGIONID) # ensure REGIONID matches
 ```
 
+## 4.3.2 Initial data wrangling
+
+```{r}
+# Converts string DATETIME into dttm and creates timestamp columns
+wrangle_demand_data <- function(df) {
+  if ("DATETIME" %in% names(df)) {
+    df <- df %>%
+      mutate(DATETIME = dmy_hm(`DATETIME`, tz='AUstralia/Brisbane'),
+                          Year = year(DATETIME),        # Extract year
+                          Month = month(DATETIME),      # Extract month
+                          Day = day(DATETIME),          # Extract day
+                          Hour = hour(DATETIME),        # Extract hour
+                          Minute = minute(DATETIME)) %>%  # Extract minute
+      mutate(TimeOfDay = Hour + Minute / 60,   # Time of the day (0 - 24)
+             WeekOfMonth = factor(week(DATETIME) - week(floor_date(DATETIME, "month")) + 1, levels = c(1,2,3,4,5,6)),
+             DayOfWeek = factor(wday(DATETIME, label=TRUE), levels = c("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")))
+  } else {
+    warning("DATETIME column not found in the dataframe.")
+  }
+  
+  return(df)
+}
+```
+
+```{r}
+
+
+df_demand_nsw <- wrangle_demand_data(data_demand_nsw)
+df_temperature_nsw <- wrangle_demand_data(data_temperature_nsw)
+
+
+```
+
+
+
 ## 4.4 Summary Statistics
 
 ``` {r}
@@ -307,6 +356,405 @@ ggplot(data_demand_qld, aes(x = DATETIME, y = TOTALDEMAND)) +
   geom_point() +
   labs(x = "X-axis label", y = "Y-axis label", title = "Scatter Plot")
 ```
+
+### NSW 
+
+#### Demand data
+
+
+```{r}
+
+df_demand_nsw %>% 
+  ggplot(aes(x=DATETIME, y=TOTALDEMAND)) +
+  geom_line() +
+  geom_vline(data = data.frame(x = seq(from = floor_date(min(df_demand_nsw$DATETIME), "year"),
+                                       to = ceiling_date(max(df_demand_nsw$DATETIME), "year"),
+                                       by = "1 year")), 
+             aes(xintercept = as.numeric(x)), 
+             linetype = "dotted", color = "red") +
+  scale_x_datetime(
+    date_breaks = '1 year',
+    date_labels = '%Y'
+  ) +
+  theme_minimal()
+
+
+```
+
+```{r , message=FALSE}
+
+df_demand_nsw_monthly <- df_demand_nsw %>% 
+  group_by(Month, WeekOfMonth, TimeOfDay) %>% 
+  summarise(MeanDemand = mean(TOTALDEMAND)) %>% 
+  ungroup()
+
+df_demand_nsw_monthly %>% 
+  ggplot(aes(x = TimeOfDay, y = MeanDemand)) +
+  geom_line(aes(color = WeekOfMonth)) +
+  facet_wrap(~ Month, ncol = 3) + 
+  scale_x_continuous(name = "Time of Day", breaks = seq(0, 24, by = 3), labels = function(x) sprintf("%02d:00", x)) +
+  scale_y_continuous(name = "Mean Total Demand") +
+  labs(title = "Weekly Pattern of Electricity Demand by Month") +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), 
+        strip.text.x = element_text(size = 8))
+```
+
+```{r}
+
+df_demand_nsw_seasonly <- df_demand_nsw %>% 
+  mutate(Season = case_when(
+    Month %in% c(12, 1, 2) ~ "Summer",
+    Month %in% c(3, 4, 5) ~ "Autumn",
+    Month %in% c(6, 7, 8) ~ "Winter",
+    Month %in% c(9, 10, 11) ~ "Spring",
+    TRUE ~ NA_character_))
+
+df_demand_nsw_seasonly %>% 
+  ggplot(aes(x = factor(Hour), y = TOTALDEMAND)) +
+  geom_boxplot(aes(fill=Season)) +
+  facet_wrap(~Season, scales = "free_y") + # Faceting by season
+  labs(title = "Electricity Demand by Hour Across Seasons",
+       x = "Hour of Day",
+       y = "Total Demand") +
+  scale_x_discrete(name = "Time of Day", breaks = seq(0, 24, by = 2)) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 0, hjust = 1)) # Improve readability of x axis labels
+
+
+```
+
+```{r ,message=FALSE}
+
+df_demand_nsw_weekly <- df_demand_nsw %>% 
+  group_by(DayOfWeek, TimeOfDay) %>% 
+  summarise(MeanDemand = mean(TOTALDEMAND, na.rm = TRUE))
+
+df_demand_nsw_weekly %>% ggplot(aes(x = TimeOfDay, y = MeanDemand)) +
+  geom_line(aes(color = DayOfWeek)) +
+  scale_x_continuous(name = "Time of Day", breaks = seq(0, 24, by = 1), labels = function(x) sprintf("%02d:00", x)) +
+  scale_y_continuous(name = "Mean Total Demand") +
+  scale_color_brewer(palette = "Dark2") +
+  labs(title = "Mean Total Demand by Time of Day and Day of Week") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+```
+
+```{r , message=FALSE}
+
+df_demand_nsw_daily <- df_demand_nsw %>%
+  group_by(Month, Day) %>% 
+  summarise(Avg_daily_demand = mean(TOTALDEMAND)) %>% 
+  mutate(DATE = make_date(year=2012, month=Month, day=Day),
+         MonthName = month(DATE, label=TRUE))
+
+df_demand_nsw_daily %>% 
+  ggplot(aes(x = DATE, y = Avg_daily_demand)) +
+  geom_line() + # Draw lines between points
+  geom_point() + # Add points for each data point
+  geom_smooth() +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b") + # Customize x-axis labels
+  labs(x = "Month", y = "Avg demand", title = "Average daily demand") +
+  theme_minimal() # Use a minimal theme
+
+
+```
+
+Some days are significantly lower demand, suspect to be holidays.
+
+
+
+##### Temperature data
+
+```{r}
+
+
+df_temperature_nsw %>% 
+  ggplot(aes(x=DATETIME, y=TEMPERATURE)) +
+  geom_line() +
+  geom_vline(data = data.frame(x = seq(from = floor_date(min(df_temperature_nsw$DATETIME), "year"),
+                                       to = ceiling_date(max(df_temperature_nsw$DATETIME), "year"),
+                                       by = "1 year")), 
+             aes(xintercept = as.numeric(x)), 
+             linetype = "dotted", color = "red") +
+  scale_x_datetime(
+    date_breaks = '1 year',
+    date_labels = '%Y'
+  ) +
+  theme_minimal()
+
+
+```
+
+##### Holidays effect
+
+```{r}
+
+## Reference: https://www.michaelplazzer.com/datasets/australian-public-holiday-data/
+
+holidays <- read_csv('../data/Aus_public_hols_2009-2022-1.csv')
+
+holidays_nsw <- holidays %>% 
+  filter(State == 'NSW')
+```
+
+```{r}
+
+df_demand_nsw_holidays <- df_demand_nsw %>% 
+  mutate(Date = date(DATETIME)) %>% 
+  mutate(
+    IsHoliday = case_when(
+      date(DATETIME) %in% holidays_nsw$Date ~ 'Holiday',
+      TRUE ~ 'Non-Holiday'
+    ))
+
+# Boxplot to compare electricity demand on holidays vs non-holidays
+df_demand_nsw_holidays %>% 
+  ggplot(aes(x = IsHoliday, y = TOTALDEMAND)) +
+  geom_boxplot(aes(fill=IsHoliday)) +
+  labs(title = "Electricity Demand on Holidays vs. Non-Holidays",
+       x = "", y = "Total Demand") +
+  theme_minimal()
+
+
+```
+
+
+## ?? Bivariate Analysis
+
+```{r}
+
+df_nsw <- inner_join(df_demand_nsw, df_temperature_nsw, by='DATETIME')
+
+head(df_nsw)
+
+```
+
+```{r}
+
+# Note: Loess regression takes long time to run, gam is faster
+
+df_nsw %>% 
+  ggplot(aes(x=TEMPERATURE, y=TOTALDEMAND)) +
+  geom_point() +
+  geom_smooth(method = 'gam', color = "blue") + # Adds a gam regression line
+  labs(title = "Relationship between Temperature and Electricity Demand",
+       x = "Temperature",
+       y = "Electricity Demand")
+
+```
+
+Correlation testing
+```{r}
+
+cor.test(df_nsw$TEMPERATURE, df_nsw$TOTALDEMAND, use = "pearson")
+
+```
+p-value is small reject null-hypothesis.
+
+```{r}
+## Reference: http://www.bom.gov.au/climate/data/index.shtml
+solar_expo_nsw <- read_csv("../data/daily_solar_exposure_bankstown_airport/IDCJAC0016_066137_1800_Data.csv")
+
+```
+
+```{r}
+
+df_solar_expo_nsw <- solar_expo_nsw %>% 
+  mutate(
+    Year = as.integer(Year), 
+    Month = as.integer(Month), 
+    Day = as.integer(Day),
+    DATE = make_date(Year, Month, Day),
+    Solar_exposure = `Daily global solar exposure (MJ/m*m)`
+  ) %>% 
+  filter(DATE >= as.Date("2010-01-01") & DATE <= as.Date("2021-03-17")) %>% 
+  select(DATE, Solar_exposure)
+
+df_solar_expo_nsw %>%
+  summarise(na_in_solar_exposure = sum(is.na(Solar_exposure)))
+
+```
+
+1 NA value is found (probably just remove it)
+
+##### Solar Exposures
+
+```{r}
+df_solar_expo_nsw <- df_solar_expo_nsw %>% 
+  filter(!is.na(Solar_exposure))
+
+df_solar_expo_nsw %>%
+  ggplot(aes(DATE, Solar_exposure)) +
+  geom_line() +
+  geom_vline(data = data.frame(Year = unique(year(df_solar_expo_nsw$DATE))), 
+             aes(xintercept = as.Date(paste0(Year, "-01-01"))), 
+             linetype = "solid", color = "red") +
+  theme_minimal() +
+  ggtitle("Solar Exposure Over Time in NSW") +
+  xlab("Year") +
+  ylab("Solar Exposure")
+
+```
+
+
+
+```{r}
+# Converts to daily data to match solar exposure data frequency
+df_nsw_daily <- df_nsw %>% 
+  mutate(DATE = as.Date(DATETIME)) %>% 
+  group_by(DATE) %>% 
+  summarise(Daily_Avg_Temperature = mean(TEMPERATURE, na.rm = TRUE),
+            Daily_Sum_Demand = sum(TOTALDEMAND, na.rm = TRUE))
+  
+df_nsw_daily <- inner_join(df_nsw_daily, df_solar_expo_nsw, by = 'DATE')
+```
+
+```{r}
+df_nsw_daily %>% 
+  ggplot(aes(Solar_exposure,Daily_Sum_Demand)) +
+  geom_point() +
+  geom_smooth() +
+  ggtitle("Solar Exposure vs Average daily demand NSW") +
+  xlab("Solar Exposure") +
+  ylab("Average daily demand")
+
+```
+
+```{r}
+df_nsw_daily %>% 
+  ggplot(aes(Solar_exposure,Daily_Avg_Temperature)) +
+  geom_point() +
+  geom_smooth() +
+  ggtitle("Solar Exposure vs Average daily demand NSW") +
+  xlab("Solar Exposure") +
+  ylab("Average daily temperature")
+
+```
+
+```{r}
+cor.test(df_nsw_daily$Daily_Sum_Demand, df_nsw_daily$Solar_exposure, use = "pearson")
+
+```
+
+
+```{r}
+cor.test(df_nsw_daily$Daily_Avg_Temperature, df_nsw_daily$Solar_exposure, use="pearson")
+
+```
+##### Rainfall
+
+
+```{r}
+## Reference: http://www.bom.gov.au/climate/data/index.shtml
+rainfall_nsw <- read_csv("../data/daily_rainfall_bankstown_airport/IDCJAC0009_066137_1800_Data.csv")
+
+```
+
+```{r}
+
+df_rainfall_nsw <- rainfall_nsw %>% 
+  mutate(
+    Year = as.integer(Year), 
+    Month = as.integer(Month), 
+    Day = as.integer(Day),
+    DATE = make_date(Year, Month, Day),
+    Rainfall_amount = `Rainfall amount (millimetres)`
+  ) %>% 
+  filter(DATE >= as.Date("2010-01-01") & DATE <= as.Date("2021-03-17")) %>% 
+  select(DATE, Rainfall_amount)
+```
+
+
+```{r}
+
+df_nsw_daily <- inner_join(df_nsw_daily, df_rainfall_nsw, by = 'DATE')
+
+```
+
+```{r}
+
+df_nsw_daily %>% 
+  ggplot(aes(Rainfall_amount,Daily_Sum_Demand)) +
+  geom_point() +
+  geom_smooth()
+
+```
+
+Seems to have no effect on daily sum demand.
+
+
+
+slight negative correlation with demand, strong positive correlation with temperature.
+
+##### GDP
+
+```{r , message=FALSE}
+## Reference: https://data.worldbank.org/indicator/NY.GDP.MKTP.CD?locations=AU
+gdp <- read_csv('../data/GDP.csv', skip=4) %>% filter(`Country Name` == 'Australia')
+
+df_gdp <- gdp %>% 
+  pivot_longer(cols=as.character(seq(1960,2022)),
+                               names_to = 'Year',
+                               values_to = 'GDP') %>% 
+  mutate(Year = as.integer(Year)) %>% 
+  select(Year, GDP)
+
+```
+
+
+```{r}
+df_gdp %>% ggplot(aes(Year, GDP)) +
+  geom_line()
+
+```
+
+
+```{r}
+# Converts to yearly data to match GDP dataset
+df_demand_nsw_yearly = df_demand_nsw %>% 
+  mutate(Year = year(DATETIME)) %>% 
+  group_by(Year) %>% 
+  summarise(Avg_yearly_demand = mean(TOTALDEMAND))
+
+df_nsw_yearly <- inner_join(df_demand_nsw_yearly, df_gdp, by = 'Year')
+```
+
+```{r}
+
+df_nsw_yearly %>% 
+  ggplot(aes(GDP, Avg_yearly_demand)) +
+  geom_line() +
+  geom_smooth()
+
+
+```
+```{r}
+
+cor.test(df_nsw_yearly$GDP, df_nsw_yearly$Avg_yearly_demand, use="pearson")
+
+```
+Not statistically significant. Accept null hypothesis, no correlation.
+
+
+
+## ?? Lag-analysis
+
+```{r}
+
+dfts_demand_nsw <- as_tsibble(df_demand_nsw %>% select(DATETIME, TOTALDEMAND), index=DATETIME)
+
+
+dfts_demand_nsw %>%
+  model(STL(TOTALDEMAND ~ season(window = "periodic"))) %>%
+  components() %>%
+  autoplot()
+```
+The residual component's structure indicates that after removing the trend and seasonal effects, there are still patterns left to explore, which could be due to other exogenous factors, random noise, or complex dynamics not modeled by simple trend and seasonality. Further investigation needed.
+
+
 
 ## 4.6 Data Relationships
 
