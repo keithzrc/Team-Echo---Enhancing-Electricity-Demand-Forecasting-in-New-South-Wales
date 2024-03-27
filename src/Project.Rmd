@@ -82,8 +82,10 @@ install.packages("ggplot2")
 install.packages("tidyverse")
 install.packages("lubridate")
 install.packages("mgcv")
+install.packages("fpp2")
+install.packages("fable")
 
-```
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 ```
 
 
 
@@ -279,6 +281,8 @@ wrangle_demand_data <- function(df) {
 df_demand_nsw <- wrangle_demand_data(data_demand_nsw)
 df_temperature_nsw <- wrangle_demand_data(data_temperature_nsw)
 
+head(df_demand_nsw)
+head(df_temperature_nsw)
 
 ```
 
@@ -288,20 +292,20 @@ df_temperature_nsw <- wrangle_demand_data(data_temperature_nsw)
 
 ``` {r}
 # detect outliers, based on z score
-detect_outliers <- function(data) {
-  z_scores <- scale(data)
-  outliers <- abs(z_scores) > 3
-  return(outliers)
-}
+#detect_outliers <- function(data) {
+#  z_scores <- scale(data)
+#  outliers <- abs(z_scores) > 3
+#  return(outliers)
+#}
 
 # detect outliers, based on modified z score
-detect_modified_outliers <- function(data) {
-  median_val <- median(data)
-  mad_val <- mad(data)
-  modified_z_scores <- (data - median_val) / mad_val
-  outliers_modified <- abs(modified_z_scores) > 3.5
-  return(outliers_modified)
-}
+#detect_modified_outliers <- function(data) {
+#  median_val <- median(data)
+#  mad_val <- mad(data)
+#  modified_z_scores <- (data - median_val) / mad_val
+#  outliers_modified <- abs(modified_z_scores) > 3.5
+#  return(outliers_modified)
+#}
 
 
 
@@ -329,7 +333,7 @@ hist(data_demand_vic$TOTALDEMAND)
 #data_forecastdemand_vic_outliers_true <- data_forecastdemand_vic_outliers[data_forecastdemand_vic_outliers == TRUE]
 #print(data_forecastdemand_vic_outliers == TRUE)
 
-detect_outliers(data_forecastdemand_vic$FORECASTDEMAND)
+#detect_outliers(data_forecastdemand_vic$FORECASTDEMAND)
 
 ```
 
