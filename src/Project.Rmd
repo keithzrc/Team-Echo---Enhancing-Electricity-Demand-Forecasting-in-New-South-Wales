@@ -85,12 +85,10 @@ install.packages("mgcv")
 install.packages("fpp2")
 install.packages("fable")
 
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 ```
-
+```
 
 
 ```{r}
-
 library(readr)
 library(here)
 library(ggplot2)
@@ -143,12 +141,42 @@ data_demand_qld <- read_csv(unzip("../data/Australia/d.zip", files = "d/totaldem
 
 
 # NSW
-#data_forecastdemand_nsw <- read_csv(here("/Users/josephrobertmelbin/Documents/GitHub/Project2/data/NSW/forecastdemand_nsw.csv"))
 data_temperature_nsw <- read_csv(unzip("../data/NSW/temperature_nsw.csv.zip", files = "temperature_nsw.csv", exdir = tempdir())[1])
 data_demand_nsw <- read_csv(unzip("../data/NSW/totaldemand_nsw.csv.zip", files = "totaldemand_nsw.csv", exdir = tempdir())[1])
+```
 
+
+```{r ,message=FALSE}
+data_forecastdemand_nsw_part1 <- read_csv(unzip("../data/NSW/forecastdemand/forecastdemand_part1.csv.zip", files = "forecastdemand_part1.csv", exdir = tempdir())[1])
+
+data_forecastdemand_nsw_part2 <- read_csv(unzip("../data/NSW/forecastdemand/forecastdemand_part2.csv.zip", files = "forecastdemand_part2.csv", exdir = tempdir())[1])
+
+data_forecastdemand_nsw_part3 <- read_csv(unzip("../data/NSW/forecastdemand/forecastdemand_part3.csv.zip", files = "forecastdemand_part3.csv", exdir = tempdir())[1])
+
+data_forecastdemand_nsw_part4 <- read_csv(unzip("../data/NSW/forecastdemand/forecastdemand_part4.csv.zip", files = "forecastdemand_part4.csv", exdir = tempdir())[1])
+
+data_forecastdemand_nsw_part5 <- read_csv(unzip("../data/NSW/forecastdemand/forecastdemand_part5.csv.zip", files = "forecastdemand_part5.csv", exdir = tempdir())[1])
 
 ```
+
+```{r}
+# Combine all forecastdemand into 1 df
+
+data_forecastdemand_nsw <- bind_rows(data_forecastdemand_nsw_part1,
+                                     data_forecastdemand_nsw_part2,
+                                     data_forecastdemand_nsw_part3,
+                                     data_forecastdemand_nsw_part4,
+                                     data_forecastdemand_nsw_part5)
+
+# Clear memory
+rm(data_forecastdemand_nsw_part1,
+   data_forecastdemand_nsw_part2,
+   data_forecastdemand_nsw_part3,
+   data_forecastdemand_nsw_part4,
+   data_forecastdemand_nsw_part5)
+
+```
+
 
 ### 4.2.2 Sourced Data
 
