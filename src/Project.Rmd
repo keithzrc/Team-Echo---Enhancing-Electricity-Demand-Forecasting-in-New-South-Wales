@@ -32,49 +32,9 @@ output: html_document
 
 ---
 
-# 2.0 Literature Review
-
-## 2.1 Industry/Operational Context
-
-### 2.1.1 Variables of Interest
-#### 2.1.1.1 Temperature
-#### 2.1.1.2 Population
-#### 2.1.1.3 Industry Base
-#### 2.1.1.4 Renewable Engery Prevalence
-
-## 2.2 Research Topic
-
-## 2.3 Statistical Models
-
-### 2.3.1 Regression Analysis
-
-#### 2.3.1.1 Linear Models 
-
-#### 2.3.1.2 Generalised Models
-
-#### 2.3.1.3 Logistics Models
-
-#### 2.3.1.4 Poisson Models
-
-#### 2.3.1.5 Log-Linear Models
-
-#### 2.3.1.6 Model Assessment
-
-#### 2.3.1.7 Polynomial Models
-
-#### 2.3.1.8 Splines
-
-#### 2.3.1.9 Generalised Additive Models
-
-### 2.3.2 Multivariate Analysis
-
----
-
-# 3.0 Material and Methods
-
 # Packages
 
-```{r}
+```{r, run=FALSE}
 
 install.packages("readr")
 install.packages("here")
@@ -84,11 +44,14 @@ install.packages("lubridate")
 install.packages("mgcv")
 install.packages("fpp2")
 install.packages("fable")
+install.packages('feasts')
+install.packages('corrplot')
+install.packages("corrplot")
 
 ```
 
 
-```{r}
+```{r, message=FALSE}
 library(readr)
 library(here)
 library(ggplot2)
@@ -98,7 +61,8 @@ library(mgcv)
 library(fpp2)
 library(fable)
 library(feasts)
-
+library(corrplot)
+library(forecast)
 ```
 
 ---
@@ -113,38 +77,17 @@ through the addition of independent variables. Do these models provide
 comparable predictive results to the supplied predictions and if so under what 
 circumstances.
 
-## 4.2 Collecting and Loading Data
+## Collecting and Loading Data
 
-### 4.2.1 Provided Data 
+### Provided Data 
 
-``` {r}
-
-# Load Data
-
-# Adjusting the paths according to the Github structure:
-
-# VIC
-data_forecastdemand_vic <- read_csv(unzip("../data/Australia/a.zip", files = "a/forecastdemand_vic.csv", exdir = tempdir())[1])
-data_temperature_vic <- read_csv(unzip("../data/Australia/d.zip", files = "d/temprature_vic.csv", exdir = tempdir())[1])
-data_demand_vic <- read_csv(unzip("../data/Australia/d.zip", files = "d/totaldemand_vic.csv", exdir = tempdir())[1])
-
-# SA
-data_forecastdemand_sa <- read_csv(unzip("../data/Australia/b.zip", files = "b/forecastdemand_sa.csv", exdir = tempdir())[1])
-data_temperature_sa <- read_csv(unzip("../data/Australia/d.zip", files = "d/temprature_sa.csv", exdir = tempdir())[1])
-data_demand_sa <- read_csv(unzip("../data/Australia/d.zip", files = "d/totaldemand_sa.csv", exdir = tempdir())[1])
-
-# QLD
-data_forecastdemand_qld <- read_csv(unzip("../data/Australia/c.zip", files = "c/forecastdemand_qld.csv", exdir = tempdir())[1])
-data_temperature_qld <- read_csv(unzip("../data/Australia/d.zip", files = "d/temprature_qld.csv", exdir = tempdir())[1])
-data_demand_qld <- read_csv(unzip("../data/Australia/d.zip", files = "d/totaldemand_qld.csv", exdir = tempdir())[1])
-
-
+```{r, message=FALSE}
 
 # NSW
 data_temperature_nsw <- read_csv(unzip("../data/NSW/temperature_nsw.csv.zip", files = "temperature_nsw.csv", exdir = tempdir())[1])
 data_demand_nsw <- read_csv(unzip("../data/NSW/totaldemand_nsw.csv.zip", files = "totaldemand_nsw.csv", exdir = tempdir())[1])
-```
 
+```
 
 ```{r ,message=FALSE}
 data_forecastdemand_nsw_part1 <- read_csv(unzip("../data/NSW/forecastdemand/forecastdemand_part1.csv.zip", files = "forecastdemand_part1.csv", exdir = tempdir())[1])
@@ -180,113 +123,67 @@ rm(data_forecastdemand_nsw_part1,
 
 ### 4.2.2 Sourced Data
 
+```{r, message=FALSE}
+## Reference: https://www.michaelplazzer.com/datasets/australian-public-holiday-data/
+
+holidays <- read_csv('../data/Aus_public_hols_2009-2022-1.csv')
+
+holidays_nsw <- holidays %>% 
+  filter(State == 'NSW')
 
 
-## 4.3.1 Initial Data Inspection
+## Reference: http://www.bom.gov.au/climate/data/index.shtml
+solar_expo_nsw <- read_csv("../data/daily_solar_exposure_bankstown_airport/IDCJAC0016_066137_1800_Data.csv")
 
+## Reference: http://www.bom.gov.au/climate/data/index.shtml
+rainfall_nsw <- read_csv("../data/daily_rainfall_bankstown_airport/IDCJAC0009_066137_1800_Data.csv")
+
+## Reference: https://data.worldbank.org/indicator/NY.GDP.MKTP.CD?locations=AU
+gdp <- read_csv('../data/GDP.csv', skip=4) %>% filter(`Country Name` == 'Australia')
+
+```
+
+
+##### Functions to clean and wrangle data
 ``` {r}
-# Generate Some Useful Functions
+# Checks for NA values
 
-# check for null values
 check_for_na <- function(data) {
-  for (col_index in seq_along(data)) {
-    has_na <- any(is.na(data[[col_index]]))
-    cat("Column", col_index, "has NA values:", has_na, "\n")
+  # Get the name of the dataframe
+  data_name <- deparse(substitute(data))
+  
+  # Print the name of the dataframe
+  cat(sprintf("Dataframe: '%s'\n", data_name))
+  
+  # Iterate over each column by name
+  for (col_name in colnames(data)) {
+    # Check if the current column has any NA values
+    na_rows <- sum(is.na(data[[col_name]]))
+    has_na <- na_rows > 0
+    
+    # Print the column name, NA check result, and number of NA rows if any
+    cat(sprintf("  - Column '%s': %s", col_name, ifelse(has_na, "TRUE", "FALSE")))
+    
+    # If NA values are present, also print the number of rows with NA
+    if (has_na) {
+      cat(sprintf(", NA rows: %d\n", na_rows))
+    } else {
+      cat("\n") # Just move to the next line if no NAs
+    }
   }
+  cat("\n") # Add an extra newline for better separation between dataframes
 }
 
-# check for unique values
-#check_unique_entries <- function(data) {
-#  unique_entries_list <- list()
-#  for (col_name in names(data)) {
-#    unique_entries <- unique(data[[col_name]])
-#    unique_entries_list[[col_name]] <- unique_entries
-#  }
-#  return(unique_entries_list)
-#}
+
 
 ```
-
-``` {r}
-# VIC
-# check structure
-str(data_forecastdemand_vic)
-str(data_temperature_vic)
-str(data_demand_vic)
-
-# check for null values
-check_for_na(data_forecastdemand_vic)
-check_for_na(data_temperature_vic)
-check_for_na(data_demand_vic)
-
-# check character data types for uniqueness
-unique(data_forecastdemand_vic$REGIONID)
-unique(data_temperature_vic$LOCATION)
-unique(data_demand_vic$REGIONID) # ensure REGIONID matches
-```
-
-``` {r}
-# SA
-# check structure
-str(data_forecastdemand_sa)
-str(data_temperature_sa)
-str(data_demand_sa)
-
-# check for null values
-check_for_na(data_forecastdemand_sa)
-check_for_na(data_temperature_sa)
-check_for_na(data_demand_sa)
-
-# check character data types for uniqueness
-unique(data_forecastdemand_sa$REGIONID)
-unique(data_temperature_sa$LOCATION)
-unique(data_demand_sa$REGIONID) # ensure REGIONID matches
-```
-
-``` {r}
-# QLD
-# check structure
-str(data_forecastdemand_qld)
-str(data_temperature_qld)
-str(data_demand_qld)
-
-# check for null values
-check_for_na(data_forecastdemand_qld)
-check_for_na(data_temperature_qld)
-check_for_na(data_demand_qld)
-
-# check character data types for uniqueness
-unique(data_forecastdemand_qld$REGIONID)
-unique(data_temperature_qld$LOCATION)
-unique(data_demand_qld$REGIONID) # ensure REGIONID matches
-```
-
-``` {r}
-# NSW
-# check structure
-str(data_forecastdemand_nsw)
-str(data_temperature_nsw)
-str(data_demand_nsw)
-
-# check for null values
-check_for_na(data_forecastdemand_nsw)
-check_for_na(data_temperature_nsw)
-check_for_na(data_demand_nsw)
-
-# check character data types for uniqueness
-unique(data_forecastdemand_nsw$REGIONID)
-unique(data_temperature_nsw$LOCATION)
-unique(data_demand_nsw$REGIONID) # ensure REGIONID matches
-```
-
-## 4.3.2 Initial data wrangling
 
 ```{r}
 # Converts string DATETIME into dttm and creates timestamp columns
 wrangle_demand_data <- function(df) {
   if ("DATETIME" %in% names(df)) {
     df <- df %>%
-      mutate(DATETIME = dmy_hm(`DATETIME`, tz='AUstralia/Brisbane'),
+      mutate(DATETIME = dmy_hm(`DATETIME`, tz='AUstralia/Brisbane'), # Converst DATETIME to dttm 
                           Year = year(DATETIME),        # Extract year
                           Month = month(DATETIME),      # Extract month
                           Day = day(DATETIME),          # Extract day
@@ -298,101 +195,45 @@ wrangle_demand_data <- function(df) {
   } else {
     warning("DATETIME column not found in the dataframe.")
   }
-  
   return(df)
 }
 ```
 
+
+##### Check for missing values
+
 ```{r}
 
-
-df_demand_nsw <- wrangle_demand_data(data_demand_nsw)
-df_temperature_nsw <- wrangle_demand_data(data_temperature_nsw)
-
-head(df_demand_nsw)
-head(df_temperature_nsw)
-
-```
-
-
-
-## 4.4 Summary Statistics
-
-``` {r}
-# detect outliers, based on z score
-#detect_outliers <- function(data) {
-#  z_scores <- scale(data)
-#  outliers <- abs(z_scores) > 3
-#  return(outliers)
-#}
-
-# detect outliers, based on modified z score
-#detect_modified_outliers <- function(data) {
-#  median_val <- median(data)
-#  mad_val <- mad(data)
-#  modified_z_scores <- (data - median_val) / mad_val
-#  outliers_modified <- abs(modified_z_scores) > 3.5
-#  return(outliers_modified)
-#}
-
-
-
-
+# check for null values
+check_for_na(data_forecastdemand_nsw)
+check_for_na(data_temperature_nsw)
+check_for_na(data_demand_nsw)
+check_for_na(rainfall_nsw)
+check_for_na(solar_expo_nsw)
+check_for_na(gdp)
 
 ```
 
-``` {r}
-# VIC
+### Dmeand Data
 
-summary(data_forecastdemand_vic)
-summary(data_temperature_vic)
-summary(data_demand_vic)
-
-boxplot(data_forecastdemand_vic$FORECASTDEMAND)
-boxplot(data_temperature_vic$TEMPERATURE)
-boxplot(data_demand_vic$TOTALDEMAND)
-
-hist(data_forecastdemand_vic$FORECASTDEMAND)
-hist(data_temperature_vic$TEMPERATURE)
-hist(data_demand_vic$TOTALDEMAND)
-
-#data_forecastdemand_vic_z_scores <- scale(data_forecastdemand_vic$FORECASTDEMAND)
-#data_forecastdemand_vic_outliers <- abs(data_forecastdemand_vic_z_scores) > 3
-#data_forecastdemand_vic_outliers_true <- data_forecastdemand_vic_outliers[data_forecastdemand_vic_outliers == TRUE]
-#print(data_forecastdemand_vic_outliers == TRUE)
-
-#detect_outliers(data_forecastdemand_vic$FORECASTDEMAND)
-
+```{r}
+head(data_demand_nsw)
 ```
 
-``` {r}
-# SA
 
-```
-
-``` {r}
-# QLD
-
-```
-
-``` {r}
-# NSW
-
-```
-
-## 4.5 Data Visualisation
-
-``` {r} 
-# QLD Data
-ggplot(data_demand_qld, aes(x = DATETIME, y = TOTALDEMAND)) +
-  geom_point() +
-  labs(x = "X-axis label", y = "Y-axis label", title = "Scatter Plot")
-```
-
-### NSW 
 
 #### Demand data
 
+```{r}
+summary(data_demand_nsw)
+
+check_for_na(data_demand_nsw)
+
+df_demand_nsw <- wrangle_demand_data(data_demand_nsw)
+
+head(df_demand_nsw)
+
+```
 
 ```{r}
 
@@ -474,6 +315,7 @@ df_demand_nsw_weekly %>% ggplot(aes(x = TimeOfDay, y = MeanDemand)) +
 
 ```
 
+
 ```{r , message=FALSE}
 
 df_demand_nsw_daily <- df_demand_nsw %>%
@@ -496,14 +338,62 @@ df_demand_nsw_daily %>%
 
 Some days are significantly lower demand, suspect to be holidays.
 
+### Temperature data
+
+```{r}
+summary(data_temperature_nsw)
+check_for_na(data_temperature_nsw)
+df_temperature_nsw <- wrangle_demand_data(data_temperature_nsw)
+head(df_temperature_nsw)
+
+```
 
 
-##### Temperature data
+##### Align temperature data with demand data
+
+Since the temperature dataset does not have a constant time frequency, we adjust an aceptable range of time to align with the 0 minutes and 30 minutes mark of demand data.
+
+```{r}
+df_temperature_nsw <- df_temperature_nsw %>%
+  mutate(out_of_line = !(((Minute >= 55) | (Minute <= 5)) | ((Minute >= 25) & (Minute <= 35))))
+
+# Count how many intervals are out of the expected line
+sum_out_of_line <- sum(df_temperature_nsw$out_of_line, na.rm = TRUE)
+
+# Print the count of out-of-line intervals
+print(sum_out_of_line)
+
+```
+There are 16089 numbers of out of line data.
+
+
+
+```{r}
+
+df_aligned_temperature_nsw <- df_temperature_nsw %>%
+  # Create a new column for the aligned timestamp
+  mutate(DATETIME = DATETIME %>%
+           # Round down or up to the nearest 30-minute mark
+           floor_date(unit = "30 minutes") %>%
+           # Adjust the rounding (55-05 -> 0, 25-35 -> 30)
+           {if_else(minute(.) >= 55 | minute(.) <= 5, . - minutes(minute(.)), .)} %>%
+           {if_else(minute(.) >= 25 & minute(.) <= 35, . + minutes(30 - minute(.)), .)}) %>%
+  # Group by this new column
+  group_by(DATETIME) %>% 
+  # Calculate the mean temperature for each group
+  summarise(TEMPERATURE = mean(TEMPERATURE))
+
+```
+
+```{r}
+head(df_aligned_temperature_nsw)
+```
+
 
 ```{r}
 
 
-df_temperature_nsw %>% 
+df_aligned_temperature_nsw %>% 
   ggplot(aes(x=DATETIME, y=TEMPERATURE)) +
   geom_line() +
   geom_vline(data = data.frame(x = seq(from = floor_date(min(df_temperature_nsw$DATETIME), "year"),
@@ -520,77 +410,36 @@ df_temperature_nsw %>%
 
 ```
 
-##### Holidays effect
+
+## Forecast Data
 
 ```{r}
-
-## Reference: https://www.michaelplazzer.com/datasets/australian-public-holiday-data/
-
-holidays <- read_csv('../data/Aus_public_hols_2009-2022-1.csv')
-
-holidays_nsw <- holidays %>% 
-  filter(State == 'NSW')
-```
-
-```{r}
-
-df_demand_nsw_holidays <- df_demand_nsw %>% 
-  mutate(Date = date(DATETIME)) %>% 
-  mutate(
-    IsHoliday = case_when(
-      date(DATETIME) %in% holidays_nsw$Date ~ 'Holiday',
-      TRUE ~ 'Non-Holiday'
-    ))
-
-# Boxplot to compare electricity demand on holidays vs non-holidays
-df_demand_nsw_holidays %>% 
-  ggplot(aes(x = IsHoliday, y = TOTALDEMAND)) +
-  geom_boxplot(aes(fill=IsHoliday)) +
-  labs(title = "Electricity Demand on Holidays vs. Non-Holidays",
-       x = "", y = "Total Demand") +
-  theme_minimal()
-
-
-```
-
-
-## ?? Bivariate Analysis
-
-```{r}
-
-df_nsw <- inner_join(df_demand_nsw, df_temperature_nsw, by='DATETIME')
-
-head(df_nsw)
+head(data_forecastdemand_nsw)
 
 ```
 
 ```{r}
+df_forecastdemand_nsw_min <- data_forecastdemand_nsw %>%
+  group_by(DATETIME) %>%
+  filter(LASTCHANGED == min(LASTCHANGED)) 
 
-# Note: Loess regression takes long time to run, gam is faster
+df_forecastdemand_nsw_max <- data_forecastdemand_nsw %>%
+  group_by(DATETIME) %>%
+  filter(LASTCHANGED == min(LASTCHANGED)) 
 
-df_nsw %>% 
-  ggplot(aes(x=TEMPERATURE, y=TOTALDEMAND)) +
-  geom_point() +
-  geom_smooth(method = 'gam', color = "blue") + # Adds a gam regression line
-  labs(title = "Relationship between Temperature and Electricity Demand",
-       x = "Temperature",
-       y = "Electricity Demand")
-
-```
-
-Correlation testing
-```{r}
-
-cor.test(df_nsw$TEMPERATURE, df_nsw$TOTALDEMAND, use = "pearson")
+df_forecastdemand_nsw_mean <- data_forecastdemand_nsw %>%
+  group_by(DATETIME) %>%
+  filter(LASTCHANGED == mean(LASTCHANGED)) 
 
 ```
-p-value is small reject null-hypothesis.
+
+
+## Solar Exposure
 
 ```{r}
-## Reference: http://www.bom.gov.au/climate/data/index.shtml
-solar_expo_nsw <- read_csv("../data/daily_solar_exposure_bankstown_airport/IDCJAC0016_066137_1800_Data.csv")
-
+head(solar_expo_nsw)
 ```
+
 
 ```{r}
 
@@ -605,14 +454,18 @@ df_solar_expo_nsw <- solar_expo_nsw %>%
   filter(DATE >= as.Date("2010-01-01") & DATE <= as.Date("2021-03-17")) %>% 
   select(DATE, Solar_exposure)
 
-df_solar_expo_nsw %>%
-  summarise(na_in_solar_exposure = sum(is.na(Solar_exposure)))
 
 ```
 
-1 NA value is found (probably just remove it)
 
-##### Solar Exposures
+```{r}
+check_for_na(df_solar_expo_nsw)
+
+```
+
+1 NA value is found.
+
+
 
 ```{r}
 df_solar_expo_nsw <- df_solar_expo_nsw %>% 
@@ -631,63 +484,25 @@ df_solar_expo_nsw %>%
 
 ```
 
-
-
 ```{r}
-# Converts to daily data to match solar exposure data frequency
-df_nsw_daily <- df_nsw %>% 
-  mutate(DATE = as.Date(DATETIME)) %>% 
-  group_by(DATE) %>% 
-  summarise(Daily_Avg_Temperature = mean(TEMPERATURE, na.rm = TRUE),
-            Daily_Sum_Demand = sum(TOTALDEMAND, na.rm = TRUE))
-  
-df_nsw_daily <- inner_join(df_nsw_daily, df_solar_expo_nsw, by = 'DATE')
+df_solar_expo_nsw %>%
+  mutate(Month = month(DATE, label = TRUE)) %>%
+  ggplot(aes(x = Month, y = Solar_exposure)) +
+  geom_boxplot() +
+  theme_minimal() +
+  labs(title = "Solar Exposure by Month", x = "Month", y = "Solar Exposure")
 ```
 
-```{r}
-df_nsw_daily %>% 
-  ggplot(aes(Solar_exposure,Daily_Sum_Demand)) +
-  geom_point() +
-  geom_smooth() +
-  ggtitle("Solar Exposure vs Average daily demand NSW") +
-  xlab("Solar Exposure") +
-  ylab("Average daily demand")
-
-```
+### Rainfall 
 
 ```{r}
-df_nsw_daily %>% 
-  ggplot(aes(Solar_exposure,Daily_Avg_Temperature)) +
-  geom_point() +
-  geom_smooth() +
-  ggtitle("Solar Exposure vs Average daily demand NSW") +
-  xlab("Solar Exposure") +
-  ylab("Average daily temperature")
-
-```
-
-```{r}
-cor.test(df_nsw_daily$Daily_Sum_Demand, df_nsw_daily$Solar_exposure, use = "pearson")
-
-```
-
-
-```{r}
-cor.test(df_nsw_daily$Daily_Avg_Temperature, df_nsw_daily$Solar_exposure, use="pearson")
-
-```
-##### Rainfall
-
-
-```{r}
-## Reference: http://www.bom.gov.au/climate/data/index.shtml
-rainfall_nsw <- read_csv("../data/daily_rainfall_bankstown_airport/IDCJAC0009_066137_1800_Data.csv")
+head(rainfall_nsw)
 
 ```
 
 ```{r}
 
-df_rainfall_nsw <- rainfall_nsw %>% 
+df_rainfall_nsw <- rainfall_nsw %>%
   mutate(
     Year = as.integer(Year), 
     Month = as.integer(Month), 
@@ -702,47 +517,241 @@ df_rainfall_nsw <- rainfall_nsw %>%
 
 ```{r}
 
-df_nsw_daily <- inner_join(df_nsw_daily, df_rainfall_nsw, by = 'DATE')
+check_for_na(df_rainfall_nsw)
+
+
+```
+93 NA values, convert to median 
+
+
+```{r}
+# Calculate the median of Rainfall_amount excluding NA values
+median_rainfall <- median(df_rainfall_nsw$Rainfall_amount, na.rm = TRUE)
+
+# Impute NA values in Rainfall_amount with the median
+df_rainfall_nsw <- df_rainfall_nsw %>%
+  mutate(Rainfall_amount = ifelse(is.na(Rainfall_amount), median_rainfall, Rainfall_amount))
+
 
 ```
 
 ```{r}
+df_rainfall_nsw %>% 
+  ggplot(aes(x=DATE, y=Rainfall_amount)) +
+  geom_line() +
+  theme_minimal()
 
-df_nsw_daily %>% 
-  ggplot(aes(Rainfall_amount,Daily_Sum_Demand)) +
-  geom_point() +
-  geom_smooth()
 
 ```
 
-Seems to have no effect on daily sum demand.
-
-
-
-slight negative correlation with demand, strong positive correlation with temperature.
-
 ##### GDP
 
-```{r , message=FALSE}
-## Reference: https://data.worldbank.org/indicator/NY.GDP.MKTP.CD?locations=AU
-gdp <- read_csv('../data/GDP.csv', skip=4) %>% filter(`Country Name` == 'Australia')
+```{r}
+head(gdp)
+
+```
+
+
+```{r}
 
 df_gdp <- gdp %>% 
   pivot_longer(cols=as.character(seq(1960,2022)),
                                names_to = 'Year',
                                values_to = 'GDP') %>% 
   mutate(Year = as.integer(Year)) %>% 
-  select(Year, GDP)
+  select(Year, GDP) %>% 
+  filter(Year >= 2010)
+
+```
+
+```{r}
+head(df_gdp)
+
+```
+
+
+## Bivariate Analysis
+
+##### Holidays 
+
+```{r}
+
+df_demand_nsw <- df_demand_nsw %>% 
+  mutate(Date = date(DATETIME)) %>% 
+  mutate(
+    IsHoliday = case_when(
+      date(DATETIME) %in% holidays_nsw$Date ~ 'Holiday',
+      TRUE ~ 'Non-Holiday'
+    ))
+
+# Boxplot to compare electricity demand on holidays vs non-holidays
+df_demand_nsw %>% 
+  ggplot(aes(x = IsHoliday, y = TOTALDEMAND)) +
+  geom_boxplot(aes(fill=IsHoliday)) +
+  labs(title = "Electricity Demand on Holidays vs. Non-Holidays",
+       x = "", y = "Total Demand") +
+  theme_minimal()
+
+
+```
+
+```{r}
+
+
+df_nsw %>% 
+  ggplot(aes(x=TEMPERATURE, y=TOTALDEMAND)) +
+  geom_point() +
+  labs(title = "Relationship between Temperature and Electricity Demand",
+       x = "Temperature",
+       y = "Electricity Demand")
+
+```
+
+Correlation testing
+```{r}
+
+cor.test(df_nsw$TEMPERATURE, df_nsw$TOTALDEMAND, use = "pearson")
+
+```
+p-value is small reject null-hypothesis.
+
+
+
+##### Demand vs Temperature
+```{r}
+# Inner join to get only matched data
+df_nsw <- inner_join(df_demand_nsw, df_aligned_temperature_nsw, by = "DATETIME")
 
 ```
 
 
 ```{r}
-df_gdp %>% ggplot(aes(Year, GDP)) +
-  geom_line()
+
+
+# Outer join to find unmatched data
+unmatched_demand <- anti_join(df_demand_nsw, df_aligned_temperature_nsw, by = "DATETIME")
+unmatched_temperature <- anti_join(df_aligned_temperature_nsw, df_demand_nsw, by = "DATETIME")
+
+# Combine the unmatched data into one tibble
+excluded_data <- bind_rows(unmatched_demand, unmatched_temperature)
+
+# Optionally, add a column to indicate the source of each row in the excluded data
+excluded_data <- excluded_data %>%
+  mutate(Source = ifelse(is.na(TEMPERATURE), "Demand Only", "Temperature Only"))
+
+nrow(excluded_data)
+
+unique(excluded_data$Source)
+```
+
+
+
+
+
+```{r}
+# Converts to daily data to match solar exposure and rainfall 
+df_nsw_daily <- df_nsw %>% 
+  mutate(DATE = as.Date(DATETIME)) %>% 
+  group_by(DATE) %>% 
+  summarise(Daily_Mean_Temperature = mean(TEMPERATURE, na.rm = TRUE),
+            Daily_Max_Temperature = max(TEMPERATURE, na.rm = TRUE),
+            Daily_Min_Temperature = min(TEMPERATURE, na.rm = TRUE),
+            Daily_Mean_Demand = mean(TOTALDEMAND, na.rm = TRUE),
+            Daily_Max_Demand = max(TOTALDEMAND, na.rm = TRUE),
+            Daily_Min_Demand = min(TOTALDEMAND, na.rm = TRUE)) %>% 
+    ungroup() %>% 
+    mutate(WeekOfMonth = factor(week(DATE) - week(floor_date(DATE, "month")) + 1, levels = c(1,2,3,4,5,6)),
+           DayOfWeek = factor(wday(DATE, label=TRUE), levels = c("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")))
+  
+df_nsw_daily <- inner_join(df_nsw_daily, df_solar_expo_nsw, by = 'DATE')
+```
+
+
+
+```{r}
+
+# Transform the data from wide to long format
+df_nsw_daily_long <- df_nsw_daily %>%
+  pivot_longer(cols = c("Daily_Mean_Demand", "Daily_Max_Demand", "Daily_Min_Demand"),
+               names_to = "Demand_Type",
+               values_to = "Demand") %>% 
+    pivot_longer(cols = c("Daily_Mean_Temperature", "Daily_Max_Temperature", "Daily_Min_Temperature"),
+               names_to = "Temperature_Type",
+               values_to = "Temperature")
+```
+
+
+
+##### Daily Demand vs Solar Exposure
+```{r}
+# Plotting with faceting
+ggplot(df_nsw_daily_long, aes(x = Solar_exposure, y = Demand)) +
+  geom_point() +
+  geom_smooth(se = FALSE, method = "loess") + 
+  ggtitle("Solar Exposure vs Daily Demand in NSW") +
+  xlab("Solar Exposure") +
+  ylab("Demand") +
+  facet_wrap(~Demand_Type, scales = "free_y") + # Create a separate panel for each Demand_Type
+  theme_minimal()
+
 
 ```
 
+##### Daily Temperature vs SOlar Exposure
+
+```{r}
+
+# Plotting with faceting
+ggplot(df_nsw_daily_long, aes(x = Solar_exposure, y = Temperature)) +
+  geom_point() +
+  geom_smooth(se = FALSE, method = "loess") + 
+  ggtitle("Solar Exposure vs Temperature in NSW") +
+  xlab("Solar Exposure") +
+  ylab("Temperature") +
+  facet_wrap(~Temperature_Type, scales = "free_y") + 
+  theme_minimal()
+
+
+```
+
+
+
+
+```{r}
+df_nsw_daily <- inner_join(df_nsw_daily, df_rainfall_nsw)
+df_nsw_daily_long <- inner_join(df_nsw_daily_long, df_rainfall_nsw)
+
+
+
+# Plotting with faceting
+ggplot(df_nsw_daily_long, aes(x = Rainfall_amount, y = Demand)) +
+  geom_point() +
+  geom_smooth(se = FALSE, method = "loess") + 
+  ggtitle("Daily Demand vs Rainfall Amount in NSW") +
+  xlab("Rainfall Amount") +
+  ylab("Electricity Demand") +
+  facet_wrap(~Demand_Type, scales = "free_y") + # Create a separate panel for each Demand_Type
+  theme_minimal()
+
+
+
+```
+
+
+```{r}
+
+cor.test(df_nsw_daily$Daily_Mean_Demand, df_nsw_daily$Solar_exposure, use="pearson")
+cor.test(df_nsw_daily$Daily_Max_Demand, df_nsw_daily$Solar_exposure, use="pearson")
+cor.test(df_nsw_daily$Daily_Min_Demand, df_nsw_daily$Solar_exposure, use="pearson")
+cor.test(df_nsw_daily$Daily_Mean_Temperature, df_nsw_daily$Solar_exposure, use="pearson")
+cor.test(df_nsw_daily$Daily_Max_Temperature, df_nsw_daily$Solar_exposure, use="pearson")
+cor.test(df_nsw_daily$Daily_Min_Temperature, df_nsw_daily$Solar_exposure, use="pearson")
+
+```
+
+
+
+##### GDP vs Demand
 
 ```{r}
 # Converts to yearly data to match GDP dataset
@@ -763,6 +772,7 @@ df_nsw_yearly %>%
 
 
 ```
+
 ```{r}
 
 cor.test(df_nsw_yearly$GDP, df_nsw_yearly$Avg_yearly_demand, use="pearson")
@@ -772,181 +782,180 @@ Not statistically significant. Accept null hypothesis, no correlation.
 
 
 
-## ?? Lag-analysis
+#### Forecast Data
+
+```{r}
+# Uses the latest last change date
+df_forecastdemand_nsw <- data_forecastdemand_nsw %>% 
+  group_by(DATETIME) %>%
+  filter(LASTCHANGED == max(LASTCHANGED)) %>%
+  ungroup() 
+
+```
+
+```{r}
+head(df_forecastdemand_nsw)
+
+
+```
 
 ```{r}
 
+
+df_max <- inner_join(df_forecastdemand_nsw_max, df_demand_nsw, by='DATETIME')
+```
+
+```{r}
+
+
+df_max <- df_max %>% 
+  mutate(DATE = as.Date(DATETIME))
+
+
+dates_2017_max <- unique(df_max %>% 
+  filter(Year == 2017))
+
+set.seed(123)
+
+# Sample 6 random dates
+sampled_dates <- sample(dates_2017_min$DATE, 6)
+
+
+
+sampled_df_max <- df_max %>%
+  filter(DATE %in% sampled_dates)
+
+```
+
+
+```{r}
+ggplot(sampled_df_max, aes(x = DATETIME)) + 
+  geom_line(aes(y = FORECASTDEMAND, color = "Forecast Demand"), linetype = "dashed", size = 1.2) + 
+  geom_line(aes(y = TOTALDEMAND, color = "Total Demand"), size = 1.2) +
+  geom_point(aes(y = FORECASTDEMAND, color = "Forecast Demand"), size = 2, alpha = 0.5) + 
+  geom_point(aes(y = TOTALDEMAND, color = "Total Demand"), size = 2, alpha = 0.5) +
+  labs(title = "Forecast vs Total Demand on Random Days in 2017",
+       x = "Hour of the Day",
+       y = "Demand",
+       color = "Legend") +
+  scale_color_manual(values = c("Forecast Demand" = "red", "Total Demand" = "blue")) +
+  scale_x_datetime(date_labels = "%H", date_breaks = "2 hours") +
+  theme_minimal() +
+  theme(legend.title = element_blank(),
+        legend.position = "bottom",
+        axis.text.x = element_text(angle = 45, hjust = 1)) +
+  facet_wrap(~DATE, ncol = 3, scales = "free_x")
+
+
+```
+
+
+
+### Correlation heatmap
+
+##### Demand vs Time
+
+```{r}
+
+cor_df <- df_demand_nsw %>% 
+  select(-DATETIME, -REGIONID, -Date) %>% 
+  mutate(IsHoliday = case_when(IsHoliday == 'Holiday' ~ 0, TRUE ~ 1)) %>% 
+  mutate(across(everything(), as.numeric)) %>% 
+  select(-Day,-Hour)
+
+
+cor_matrix <- cor(cor_df)
+
+
+corrplot(cor_matrix, method = "color", type = "full", order = "hclust",
+         tl.col = "black", tl.srt = 45, 
+         addCoef.col = "black") 
+
+
+```
+
+
+##### Daily data
+
+```{r}
+
+cor_df2 <- df_nsw_daily %>% 
+  select(-DATE, -WeekOfMonth, -DayOfWeek) 
+
+cor_matrix2 <- cor(cor_df2)
+
+
+corrplot(cor_matrix2, method = "color", type = "full", order = "hclust",
+         tl.col = "black", tl.srt = 45, 
+         addCoef.col = "black") 
+
+```
+
+##### Autocorrelation
+
+```{r}
 dfts_demand_nsw <- as_tsibble(df_demand_nsw %>% select(DATETIME, TOTALDEMAND), index=DATETIME)
-
-
-dfts_demand_nsw %>%
-  model(STL(TOTALDEMAND ~ season(window = "periodic"))) %>%
-  components() %>%
-  autoplot()
 ```
-The residual component's structure indicates that after removing the trend and seasonal effects, there are still patterns left to explore, which could be due to other exogenous factors, random noise, or complex dynamics not modeled by simple trend and seasonality. Further investigation needed.
 
 
 
-## 4.6 Data Relationships
+```{r, message=FALSE}
 
-``` {r}
-# generate columns based on elements of time
-# demand and forecast time series data format
-extract_forecast_datetime_components <- function(data, datetime_column) {
-  data %>%
-    mutate(
-      year = as.numeric(format({{ datetime_column }}, "%Y")),
-      month = as.numeric(format({{ datetime_column }}, "%m")),
-      day = as.numeric(format({{ datetime_column }}, "%d")),
-      hour = as.numeric(format({{ datetime_column }}, "%H")),
-      minute = as.numeric(format({{ datetime_column }}, "%M")),
-      second = as.numeric(format({{ datetime_column }}, "%S"))
-    )
-}
+ACF(dfts_demand_nsw) %>% autoplot() 
+PACF(dfts_demand_nsw) %>% autoplot() 
 
-# nsw demand time series data format
-extract_nsw_demand_datetime_components <- function(data) {
-  # Convert DATETIME column to POSIXct
-  data$DATETIME <- as.POSIXct(data$DATETIME, format = "%d/%m/%Y %H:%M")
-  
-  # Extract datetime components
-  data$day <- day(data$DATETIME)
-  data$month <- month(data$DATETIME)
-  data$year <- year(data$DATETIME)
-  data$hour <- hour(data$DATETIME)
-  data$minute <- minute(data$DATETIME)
-  data$second <- second(data$DATETIME)
-  
-  return(data)
-}
 
-# temperate time series data format
-extract_temperature_datetime_components <- function(data) {
-  # Convert DATETIME column to POSIXct
-  data$DATETIME <- as.POSIXct(data$DATETIME, format = "%d/%m/%Y %H:%M")
-  
-  # Extract datetime components
-  data$day <- day(data$DATETIME)
-  data$month <- month(data$DATETIME)
-  data$year <- year(data$DATETIME)
-  data$hour <- hour(data$DATETIME)
-  data$minute <- minute(data$DATETIME)
-  data$second <- second(data$DATETIME)
-  
-  return(data)
-}
+```
+#### STL decomposition 
+##### Extracts the trend and seasonal component of the 
+
+```{r}
+electricity_ts <- df_demand_nsw %>%
+  select(DATETIME, TOTALDEMAND) %>% 
+  as_tsibble(index = DATETIME) 
 
 ```
 
-``` {r}
-# split data time stamps into constituent components
-# forecast
-new_timestamp_format_data_forecastdemand_vic <- extract_datetime_components(data_forecastdemand_vic, DATETIME)
-new_timestamp_format_data_forecastdemand_sa <- extract_datetime_components(data_forecastdemand_sa, DATETIME)
-new_timestamp_format_data_forecastdemand_qld <- extract_datetime_components(data_forecastdemand_qld, DATETIME)
-new_timestamp_format_data_forecastdemand_nsw <- extract_datetime_components(data_forecastdemand_nsw, DATETIME)
 
-# demand
-new_timestamp_format_data_demand_vic <- extract_datetime_components(data_demand_vic, DATETIME)
-new_timestamp_format_data_demand_sa <- extract_datetime_components(data_demand_sa, DATETIME)
-new_timestamp_format_data_demand_qld <- extract_datetime_components(data_demand_qld, DATETIME)
-# need a unique function for nsw
-new_timestamp_format_data_demand_nsw <- extract_nsw_demand_datetime_components(data_demand_nsw)
+```{r}
 
-# temperature
-new_timestamp_format_data_temperature_vic <- extract_temperature_datetime_components(data_temperature_vic)
-new_timestamp_format_data_temperature_sa <- extract_temperature_datetime_components(data_temperature_sa)
-new_timestamp_format_data_temperature_qld <- extract_temperature_datetime_components(data_temperature_qld)
-new_timestamp_format_data_temperature_nsw <- extract_temperature_datetime_components(data_temperature_nsw)
-```
+decomposed <- electricity_ts %>%
+  model(STL = STL(TOTALDEMAND ~ season(window = "periodic"),
+                  robust = TRUE)) %>%
+  components()
 
-``` {r}
-# filter data to the same half hour intervals
+# Extracting seasonal components
+seasonal_components <- decomposed %>%
+  select(trend, season_hour , season_day, season_week, season_year ) 
 
-generate_subsets <- function(data) {
-  # Create an empty list to store results
-  subset_list <- list()
-  
-  # Loop through each hour
-  for (hour in 0:23) {
-    # Loop through each minute (0 and 30)
-    for (minute in c(0, 30)) {
-      # Define condition for current hour and minute
-      condition <- data$hour == hour & data$minute == minute
-      
-      # Subset data based on condition
-      subset <- data[condition, ]
-      
-      # Store the result in the list
-      subset_list[[paste0(hour, "_", minute)]] <- subset
-    }
-  }
-  
-  # Return the list of subsets
-  return(subset_list)
-}
 
 ```
 
-``` {r}
 
-# Call the function with the dataframe
-# vic
-vic_forecast_subsets <- generate_subsets(new_timestamp_format_data_forecastdemand_vic)
-vic_temperature_subsets <- generate_subsets(new_timestamp_format_data_temperature_vic)
-vic_demand_subsets <- generate_subsets(new_timestamp_format_data_demand_vic)
-#vic_demand_subsets[["5_30"]]
 
-# sa
-sa_forecast_subsets <- generate_subsets(new_timestamp_format_data_forecastdemand_sa)
-sa_temperature_subsets <- generate_subsets(new_timestamp_format_data_temperature_sa)
-sa_demand_subsets <- generate_subsets(new_timestamp_format_data_demand_sa)
 
-# qld
-qld_forecast_subsets <- generate_subsets(new_timestamp_format_data_forecastdemand_qld)
-qld_temperature_subsets <- generate_subsets(new_timestamp_format_data_temperature_qld)
-qld_demand_subsets <- generate_subsets(new_timestamp_format_data_demand_qld)
+```{r}
 
-# nsw
-nsw_forecast_subsets <- generate_subsets(new_timestamp_format_data_forecastdemand_nsw)
-nsw_temperature_subsets <- generate_subsets(new_timestamp_format_data_temperature_nsw)
-nsw_demand_subsets <- generate_subsets(new_timestamp_format_data_demand_nsw)
+lm_model <- decomposed %>%
+  model(lm = TSLM(TOTALDEMAND  ~ trend + season_hour + season_day + season_week + season_year))
+
+report(lm_model)
 
 ```
 
-``` {r}
+```{r}
+lm <-
+  lm(TOTALDEMAND ~ TimeOfDay + as.numeric(WeekOfMonth)+ as.numeric(DayOfWeek), data=df_demand_nsw )
 
-vic_demand_5_30 <- vic_demand_subsets[["5_30"]]
-vic_demand_5_30$DATETIME <- as.character(vic_demand_5_30$DATETIME)
-vic_temperature_5_30 <- vic_temperature_subsets[["5_30"]]
-vic_temperature_5_30$DATETIME <- as.character(vic_temperature_5_30$DATETIME)
-
+summary(lm)
 ```
 
-## 4.7 Outlier Detection
 
-## 4.8 Feature Detecting
 
-## 4.9 Findings
 
----
 
-# 5.0 Analysis of Results
 
----
 
-# 6.0 Discussion
 
----
 
-# 7.0 Conclusions and Recommendations
-
----
-
-# Reference List
-
----
-
-# Appendix
 
