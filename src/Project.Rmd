@@ -60,9 +60,12 @@ library(lubridate)
 library(mgcv)
 library(fpp2)
 library(fable)
+library(fabletools)
 library(feasts)
 library(corrplot)
 library(forecast)
+library(reshape2)
+library(tseries)
 ```
 
 ---
@@ -940,6 +943,17 @@ PACF(dfts_demand_nsw) %>% autoplot()
 
 
 ```
+
+```{r}
+par(mfrow = c(2, 2))
+acf(df_demand_nsw$TOTALDEMAND, 100, main = 'Autocorrelation')
+acf(df_demand_nsw$TOTALDEMAND, 1500, main = 'Autocorrelation')
+pacf(df_demand_nsw$TOTALDEMAND, 100, main = 'Partial autocorrelation')
+pacf(df_demand_nsw$TOTALDEMAND, 1500, main = 'Partial autocorrelation')
+
+```
+
+
 #### STL decomposition 
 ##### Extracts the trend and seasonal component of the 
 
@@ -999,12 +1013,14 @@ initial_train_size <- nrow(df_nsw) - 48
 
 ```{r}
 
-# Initialize vectors to store forecasts and actual values for 48 steps
+# Initialize vectors to store forecasts and actual values for the 10 validation steps
+forecasts <- numeric(10)
+actuals <- numeric(10)
 forecasts <- numeric(5)
 actuals <- numeric(5)
 
-for (i in 1:5) {  # Loop 48 times for the 24-hour period
-  # Define the current training set up to the point of forecasting
+for (i in 1:5) {  # Walk foward 10-times
+  # Update training set to include one more observation each time
   train_set <- df_nsw[1:(initial_train_size + i - 1), ]
   
   # Fit the SARIMA model with the current training set
@@ -1049,10 +1065,10 @@ cat("MAE:", MAE, "\nRMSE:", RMSE, "\nMAPE:", MAPE, "%\n")
 # Assuming 'forecasts' and 'actuals' vectors are available from your earlier code
 
 # Convert forecasts and actuals into a data frame for plotting
-results_df <- data.frame(Time = 1:5, Forecast = forecasts, Actual = actuals)
+results_df <- data.frame(Time = 1:10, Forecast = forecasts, Actual = actuals)
 
 # Melting the data frame for easier plotting with ggplot
-library(reshape2)
+
 melted_results_df <- melt(results_df, id.vars = "Time", variable.name = "Type", value.name = "Demand")
 
 # Plotting with ggplot
@@ -1074,4 +1090,48 @@ ggplot(data = melted_results_df, aes(x = Time, y = Demand, color = Type)) +
 
 
 
+
+```{r}
+model <- auto.arima(train_set$TOTALDEMAND, xreg=train_set$TEMPERATURE, seasonal = TRUE, stepwise = FALSE, approximation = FALSE)
+
+
+```
+
+```{r}
+
+summary(model)
+```
+
+
+```{r}
+
+dfts_nsw <- df_nsw %>% 
+  select(DATETIME, TOTALDEMAND,TEMPERATURE, FORECASTDEMAND) %>% 
+  mutate(key = row_number()) %>% 
+  as_tsibble(index = DATETIME, key=key)
+
+
+```
+
+
+Choosing P,D,Q,S
+
+p,d,q = 3,1,2 from auto.arima() function
+
+P: spike lag 1 in PACF
+D: Strong seasonal effect
+Q: ACF
+```{r}
+sarima_model_312_111_48 <- dfts_nsw %>%
+  model(SARIMAX = ARIMA(TOTALDEMAND ~ TEMPERATURE + pdq(3, 1, 2) + PDQ(1, 1, 1, 48)))
+
+
+```
+
+```{r}
+
+sarima_model_312_111_48<- df_nsw %>%
+  model(SARIMAX(TOTALDEMAND ~ TEMPERATURE + PDQ(3, 1, 2) + SPQ(1, 1, 1, 48)))
+
+```
 
