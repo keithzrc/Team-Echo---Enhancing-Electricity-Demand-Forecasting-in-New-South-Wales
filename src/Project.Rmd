@@ -34,7 +34,7 @@ output: html_document
 
 # Packages
 
-```{r, run=FALSE}
+```
 
 install.packages("readr")
 install.packages("here")
@@ -199,20 +199,6 @@ wrangle_demand_data <- function(df) {
 }
 ```
 
-
-##### Check for missing values
-
-```{r}
-
-# check for null values
-check_for_na(data_forecastdemand_nsw)
-check_for_na(data_temperature_nsw)
-check_for_na(data_demand_nsw)
-check_for_na(rainfall_nsw)
-check_for_na(solar_expo_nsw)
-check_for_na(gdp)
-
-```
 
 ### Dmeand Data
 
@@ -425,11 +411,8 @@ df_forecastdemand_nsw_min <- data_forecastdemand_nsw %>%
 
 df_forecastdemand_nsw_max <- data_forecastdemand_nsw %>%
   group_by(DATETIME) %>%
-  filter(LASTCHANGED == min(LASTCHANGED)) 
+  filter(LASTCHANGED == max(LASTCHANGED)) 
 
-df_forecastdemand_nsw_mean <- data_forecastdemand_nsw %>%
-  group_by(DATETIME) %>%
-  filter(LASTCHANGED == mean(LASTCHANGED)) 
 
 ```
 
@@ -595,25 +578,6 @@ df_demand_nsw %>%
 
 ```
 
-```{r}
-
-
-df_nsw %>% 
-  ggplot(aes(x=TEMPERATURE, y=TOTALDEMAND)) +
-  geom_point() +
-  labs(title = "Relationship between Temperature and Electricity Demand",
-       x = "Temperature",
-       y = "Electricity Demand")
-
-```
-
-Correlation testing
-```{r}
-
-cor.test(df_nsw$TEMPERATURE, df_nsw$TOTALDEMAND, use = "pearson")
-
-```
-p-value is small reject null-hypothesis.
 
 
 
@@ -643,9 +607,26 @@ nrow(excluded_data)
 
 unique(excluded_data$Source)
 ```
+Correlation testing
+```{r}
+
+cor.test(df_nsw$TEMPERATURE, df_nsw$TOTALDEMAND, use = "pearson")
+
+```
+p-value is small reject null-hypothesis.
 
 
+```{r}
 
+
+df_nsw %>% 
+  ggplot(aes(x=TEMPERATURE, y=TOTALDEMAND)) +
+  geom_point() +
+  labs(title = "Relationship between Temperature and Electricity Demand",
+       x = "Temperature",
+       y = "Electricity Demand")
+
+```
 
 
 ```{r}
@@ -803,6 +784,7 @@ head(df_forecastdemand_nsw)
 
 
 df_max <- inner_join(df_forecastdemand_nsw_max, df_demand_nsw, by='DATETIME')
+df_min <- inner_join(df_forecastdemand_nsw_min, df_demand_nsw, by='DATETIME')
 ```
 
 ```{r}
@@ -810,9 +792,13 @@ df_max <- inner_join(df_forecastdemand_nsw_max, df_demand_nsw, by='DATETIME')
 
 df_max <- df_max %>% 
   mutate(DATE = as.Date(DATETIME))
+df_min <- df_min %>% 
+  mutate(DATE = as.Date(DATETIME))
 
 
 dates_2017_max <- unique(df_max %>% 
+  filter(Year == 2017))
+dates_2017_min <- unique(df_min %>% 
   filter(Year == 2017))
 
 set.seed(123)
@@ -823,6 +809,9 @@ sampled_dates <- sample(dates_2017_min$DATE, 6)
 
 
 sampled_df_max <- df_max %>%
+  filter(DATE %in% sampled_dates)
+
+sampled_df_min <- df_min %>%
   filter(DATE %in% sampled_dates)
 
 ```
@@ -849,6 +838,51 @@ ggplot(sampled_df_max, aes(x = DATETIME)) +
 
 ```
 
+```{r}
+ggplot(sampled_df_min, aes(x = DATETIME)) + 
+  geom_line(aes(y = FORECASTDEMAND, color = "Forecast Demand"), linetype = "dashed", size = 1.2) + 
+  geom_line(aes(y = TOTALDEMAND, color = "Total Demand"), size = 1.2) +
+  geom_point(aes(y = FORECASTDEMAND, color = "Forecast Demand"), size = 2, alpha = 0.5) + 
+  geom_point(aes(y = TOTALDEMAND, color = "Total Demand"), size = 2, alpha = 0.5) +
+  labs(title = "Forecast vs Total Demand on Random Days in 2017",
+       x = "Hour of the Day",
+       y = "Demand",
+       color = "Legend") +
+  scale_color_manual(values = c("Forecast Demand" = "red", "Total Demand" = "blue")) +
+  scale_x_datetime(date_labels = "%H", date_breaks = "2 hours") +
+  theme_minimal() +
+  theme(legend.title = element_blank(),
+        legend.position = "bottom",
+        axis.text.x = element_text(angle = 45, hjust = 1)) +
+  facet_wrap(~DATE, ncol = 3, scales = "free_x")
+
+
+```
+
+##### Accuracy
+
+```{r}
+
+df_nsw <- inner_join(df_nsw, df_forecastdemand_nsw_max, by='DATETIME')
+
+```
+
+```{r}
+#df_nsw %>%
+  #select(DATETIME, FORECASTDEMAND.x, TOTALDEMAND) %>% 
+  #summarise(MAE = mean(abs(FORECASTDEMAND.x - TOTALDEMAND), na.rm = TRUE))
+
+# Calculate RMSE
+#rmse_value <- sqrt(mean((df_nsw$FORECASTDEMAND.x - df_nsw$TOTALDEMAND)^2, na.rm = TRUE))
+#print(rmse_value)
+
+# Calculate MAPE
+#df_nsw %>%
+  #filter(TOTALDEMAND != 0) %>% # Avoid division by zero
+  #summarise(MAPE = mean(abs((FORECASTDEMAND.x - TOTALDEMAND) / TOTALDEMAND), na.rm = TRUE) * 100)
+
+
+```
 
 
 ### Correlation heatmap
@@ -945,15 +979,97 @@ report(lm_model)
 
 ```{r}
 lm <-
-  lm(TOTALDEMAND ~ TimeOfDay + as.numeric(WeekOfMonth)+ as.numeric(DayOfWeek), data=df_demand_nsw )
+  lm(TOTALDEMAND ~ TimeOfDay + as.numeric(WeekOfMonth)+ as.numeric(DayOfWeek), data=df_demand_nsw)
 
 summary(lm)
 ```
 
 
 
+# Modelling 
+
+Walk-forward validation
+
+```{r}
+# 48 observations (24 hours)
+initial_train_size <- nrow(df_nsw) - 48
+
+```
 
 
+```{r}
+
+# Initialize vectors to store forecasts and actual values for 48 steps
+forecasts <- numeric(5)
+actuals <- numeric(5)
+
+for (i in 1:5) {  # Loop 48 times for the 24-hour period
+  # Define the current training set up to the point of forecasting
+  train_set <- df_nsw[1:(initial_train_size + i - 1), ]
+  
+  # Fit the SARIMA model with the current training set
+  fit <- auto.arima(train_set$TOTALDEMAND, xreg = train_set$TEMPERATURE, seasonal = TRUE, stepwise = FALSE, approximation = FALSE)
+  
+  # Forecast the next step with the corresponding temperature as the external regressor
+  next_temp <- df_nsw$TEMPERATURE[initial_train_size + i]  # Next temperature value
+  forecast_result <- forecast(fit, xreg = next_temp, h = 1)
+  
+  # Store the forecast and the actual demand for later comparison
+  forecasts[i] <- forecast_result$mean
+  actuals[i] <- df_nsw$TOTALDEMAND[initial_train_size + i]
+}
+
+# forecasts and actuals now contain the 48-step (24-hour) forecast and actual values
+
+
+```
+
+### ARIMA
+
+
+```{r}
+
+# Calculating MAE
+MAE <- mean(abs(forecasts - actuals), na.rm = TRUE)
+
+# Calculating RMSE
+RMSE <- sqrt(mean((forecasts - actuals)^2, na.rm = TRUE))
+
+# Calculating MAPE, ensuring to avoid division by zero
+MAPE <- mean(abs((forecasts - actuals) / actuals), na.rm = TRUE) * 100
+
+# Output the calculated metrics
+cat("MAE:", MAE, "\nRMSE:", RMSE, "\nMAPE:", MAPE, "%\n")
+
+
+```
+
+```{r}
+
+# Assuming 'forecasts' and 'actuals' vectors are available from your earlier code
+
+# Convert forecasts and actuals into a data frame for plotting
+results_df <- data.frame(Time = 1:5, Forecast = forecasts, Actual = actuals)
+
+# Melting the data frame for easier plotting with ggplot
+library(reshape2)
+melted_results_df <- melt(results_df, id.vars = "Time", variable.name = "Type", value.name = "Demand")
+
+# Plotting with ggplot
+ggplot(data = melted_results_df, aes(x = Time, y = Demand, color = Type)) +
+  geom_line() +
+  geom_point() +
+  theme_minimal() +
+  labs(title = "Forecast vs Actual Demand",
+       x = "Time Step (hours)",
+       y = "Demand",
+       color = "Legend") +
+  scale_color_manual(values = c("Forecast" = "blue", "Actual" = "red"))
+
+# This plot will show the forecasted demand in blue and the actual demand in red for comparison.
+
+
+```
 
 
 
