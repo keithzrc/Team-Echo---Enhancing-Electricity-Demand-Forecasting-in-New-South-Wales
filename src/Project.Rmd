@@ -47,6 +47,9 @@ install.packages("fable")
 install.packages('feasts')
 install.packages('corrplot')
 install.packages("corrplot")
+install.packages('reshape2')
+install.packages('tseries')
+install.packages('forecast)
 
 ```
 
