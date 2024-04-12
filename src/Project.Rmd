@@ -55,13 +55,11 @@ install.packages('forecast)
 
 
 ```{r, message=FALSE}
-library(readr)
-library(here)
 library(ggplot2)
 library(tidyverse)
 library(lubridate)
 library(mgcv)
-library(fpp2)
+library(fpp3)
 library(fable)
 library(fabletools)
 library(feasts)
@@ -69,7 +67,11 @@ library(corrplot)
 library(forecast)
 library(reshape2)
 library(tseries)
+library(tsibble)
+library(doParallel)
+library(zoo)
 ```
+
 
 ---
 
@@ -115,7 +117,7 @@ data_forecastdemand_nsw <- bind_rows(data_forecastdemand_nsw_part1,
                                      data_forecastdemand_nsw_part2,
                                      data_forecastdemand_nsw_part3,
                                      data_forecastdemand_nsw_part4,
-                                     data_forecastdemand_nsw_part5)
+                                     data_forecastdemand_nsw_part5) 
 
 # Clear memory
 rm(data_forecastdemand_nsw_part1,
@@ -941,11 +943,48 @@ dfts_demand_nsw <- as_tsibble(df_demand_nsw %>% select(DATETIME, TOTALDEMAND), i
 
 ```{r, message=FALSE}
 
-ACF(dfts_demand_nsw) %>% autoplot() 
-PACF(dfts_demand_nsw) %>% autoplot() 
+dfts_demand_nsw %>% 
+  autoplot(TOTALDEMAND %>%  difference(1)) 
+
+dfts_demand_nsw %>% features(TOTALDEMAND, unitroot_kpss)
+
+dfts_demand_nsw %>%
+  mutate(diff_TOTALDEMAND = difference(TOTALDEMAND)) %>% 
+  features(diff_TOTALDEMAND, unitroot_kpss)
+
+dfts_demand_nsw %>% features(TOTALDEMAND, unitroot_ndiffs)
+```
+
+
+```{r}
+# 0.01 Non-stationary
+dfts_demand_nsw %>% 
+  features(TOTALDEMAND, unitroot_kpss) 
+
+
+# 0.1 Stationary after first order differencing
+dfts_demand_nsw %>% 
+  mutate(diff_TOTALDEMAND = difference(TOTALDEMAND, 48)) %>% 
+  features(diff_TOTALDEMAND, unitroot_kpss) 
 
 
 ```
+
+```{r}
+dfts_demand_nsw %>% 
+  mutate(diff_TOTALDEMAND = difference(TOTALDEMAND, 48)) %>% 
+  ACF(diff_TOTALDEMAND, lag_max = 336) %>% 
+  autoplot()
+
+dfts_demand_nsw %>% 
+  mutate(diff_TOTALDEMAND = difference(TOTALDEMAND, 48)) %>% 
+  mutate(diff2_TOTALDEMAND = difference(diff_TOTALDEMAND, 48)) %>% 
+  ACF(diff2_TOTALDEMAND, lag_max = 336) %>% 
+  autoplot()
+```
+
+
+
 
 ```{r}
 par(mfrow = c(2, 2))
@@ -1003,138 +1042,355 @@ summary(lm)
 
 
 
-# Modelling 
 
-Walk-forward validation
+
+
+
+
+
+
+
+
+
+
+
+
+
+## Re-cleaning Data
+```{r}
+df_demand_nsw <- df_demand_nsw %>% 
+  mutate(Date = date(DATETIME)) %>% 
+  mutate(
+    IsHoliday = case_when(
+      date(DATETIME) %in% holidays_nsw$Date ~ TRUE,
+      TRUE ~ FALSE
+    ))
+
+
+```
 
 ```{r}
-# 48 observations (24 hours)
-initial_train_size <- nrow(df_nsw) - 48
+
+df_aligned_temperature_nsw <- df_temperature_nsw %>%
+  # Create a new column for the aligned timestamp
+  mutate(DATETIME = DATETIME %>%
+           # Round down or up to the nearest 30-minute mark
+           floor_date(unit = "30 minutes") %>%
+           # Adjust the rounding (45-14 -> 0, 15-44 -> 30)
+           {if_else(minute(.) >= 45 | minute(.) <= 14, . - minutes(minute(.)), .)} %>%
+           {if_else(minute(.) >= 15 & minute(.) <= 44, . + minutes(30 - minute(.)), .)}) %>%
+  # Group by this new column
+  group_by(DATETIME) %>% 
+  # Calculate the mean temperature for each group
+  summarise(TEMPERATURE = mean(TEMPERATURE))
 
 ```
 
 
 ```{r}
 
-# Initialize vectors to store forecasts and actual values for the 10 validation steps
-forecasts <- numeric(10)
-actuals <- numeric(10)
-forecasts <- numeric(5)
-actuals <- numeric(5)
+df_lj <- left_join(df_demand_nsw, df_aligned_temperature_nsw, by='DATETIME')
 
-for (i in 1:5) {  # Walk foward 10-times
-  # Update training set to include one more observation each time
-  train_set <- df_nsw[1:(initial_train_size + i - 1), ]
-  
-  # Fit the SARIMA model with the current training set
-  fit <- auto.arima(train_set$TOTALDEMAND, xreg = train_set$TEMPERATURE, seasonal = TRUE, stepwise = FALSE, approximation = FALSE)
-  
-  # Forecast the next step with the corresponding temperature as the external regressor
-  next_temp <- df_nsw$TEMPERATURE[initial_train_size + i]  # Next temperature value
-  forecast_result <- forecast(fit, xreg = next_temp, h = 1)
-  
-  # Store the forecast and the actual demand for later comparison
-  forecasts[i] <- forecast_result$mean
-  actuals[i] <- df_nsw$TOTALDEMAND[initial_train_size + i]
+```
+
+```{r}
+# Fill NA values
+df_lj$TEMPERATURE <- na.spline(df_lj$TEMPERATURE)
+check_for_na(df_lj)
+
+```
+
+```{r}
+
+df_nsw <- left_join(df_lj, df_forecastdemand_nsw, by='DATETIME')
+
+```
+
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(purrr)
+
+# Function to expand daily data frames
+expand_daily_data <- function(df, date_column_name, variables) {
+  df %>%
+    mutate(DATETIME = map(DATE, ~ seq(as.POSIXct(paste(.x, "00:00:00")),
+                                      as.POSIXct(paste(.x, "23:30:00")),
+                                      by = "30 min"))) %>%
+    unnest(DATETIME) %>%
+    select(DATETIME, all_of(variables))  # Preserve other relevant variables
 }
 
-# forecasts and actuals now contain the 48-step (24-hour) forecast and actual values
+# Expand df_solar_expo_nsw
+df_solar_expo_expanded <- expand_daily_data(df_solar_expo_nsw, "DATE", c("Solar_exposure"))
 
-
-```
-
-### ARIMA
-
-
-```{r}
-
-# Calculating MAE
-MAE <- mean(abs(forecasts - actuals), na.rm = TRUE)
-
-# Calculating RMSE
-RMSE <- sqrt(mean((forecasts - actuals)^2, na.rm = TRUE))
-
-# Calculating MAPE, ensuring to avoid division by zero
-MAPE <- mean(abs((forecasts - actuals) / actuals), na.rm = TRUE) * 100
-
-# Output the calculated metrics
-cat("MAE:", MAE, "\nRMSE:", RMSE, "\nMAPE:", MAPE, "%\n")
-
+# Expand df_rainfall_nsw
+df_rainfall_expanded <- expand_daily_data(df_rainfall_nsw, "DATE", c("Rainfall_amount"))
 
 ```
 
 ```{r}
 
-# Assuming 'forecasts' and 'actuals' vectors are available from your earlier code
-
-# Convert forecasts and actuals into a data frame for plotting
-results_df <- data.frame(Time = 1:10, Forecast = forecasts, Actual = actuals)
-
-# Melting the data frame for easier plotting with ggplot
-
-melted_results_df <- melt(results_df, id.vars = "Time", variable.name = "Type", value.name = "Demand")
-
-# Plotting with ggplot
-ggplot(data = melted_results_df, aes(x = Time, y = Demand, color = Type)) +
-  geom_line() +
-  geom_point() +
-  theme_minimal() +
-  labs(title = "Forecast vs Actual Demand",
-       x = "Time Step (hours)",
-       y = "Demand",
-       color = "Legend") +
-  scale_color_manual(values = c("Forecast" = "blue", "Actual" = "red"))
-
-# This plot will show the forecasted demand in blue and the actual demand in red for comparison.
-
+df_nsw <- df_nsw %>%
+  left_join(df_solar_expo_expanded, by = "DATETIME") %>%
+  left_join(df_rainfall_expanded, by = "DATETIME")
 
 ```
 
-
-
-
-
 ```{r}
-model <- auto.arima(train_set$TOTALDEMAND, xreg=train_set$TEMPERATURE, seasonal = TRUE, stepwise = FALSE, approximation = FALSE)
+# Uses the latest last change date
+df_forecastdemand_nsw <- data_forecastdemand_nsw %>% 
+  mutate(DATETIME = as_date(DATETIME, tz='AUstralia/Brisbane')) %>% 
+  group_by(DATETIME) %>%
+  filter(LASTCHANGED == max(LASTCHANGED)) %>%
+  summarize(FORECASTDEMAND = mean(FORECASTDEMAND), .groups = 'drop') %>% 
+  ungroup() 
+
 
 
 ```
 
 ```{r}
 
-summary(model)
+df_nsw$FORECASTDEMAND <- na.spline(df_nsw$FORECASTDEMAND)
+check_for_na(df_nsw)
 ```
 
 
 ```{r}
+df <- df_nsw %>% 
+  select(DATETIME, TOTALDEMAND, TEMPERATURE, FORECASTDEMAND, IsHoliday) %>% 
+  as_tsibble(index = DATETIME)
+
+
+```
+
+
+```{r}
+start_date <- ymd("2015-06-01")
+end_date <- ymd("2018-06-30")
 
 dfts_nsw <- df_nsw %>% 
-  select(DATETIME, TOTALDEMAND,TEMPERATURE, FORECASTDEMAND) %>% 
-  mutate(key = row_number()) %>% 
-  as_tsibble(index = DATETIME, key=key)
+  select(DATETIME, TOTALDEMAND, TEMPERATURE, FORECASTDEMAND, IsHoliday) %>% 
+  as_tsibble(index = DATETIME) %>% 
+  filter(DATETIME >= start_date & DATETIME <= end_date)
 
 
 ```
 
-
-Choosing P,D,Q,S
-
-p,d,q = 3,1,2 from auto.arima() function
-
-P: spike lag 1 in PACF
-D: Strong seasonal effect
-Q: ACF
-```{r}
-sarima_model_312_111_48 <- dfts_nsw %>%
-  model(SARIMAX = ARIMA(TOTALDEMAND ~ TEMPERATURE + pdq(3, 1, 2) + PDQ(1, 1, 1, 48)))
-
-
-```
+# Modelling 
 
 ```{r}
+n <- nrow(dfts_nsw)
 
-sarima_model_312_111_48<- df_nsw %>%
-  model(SARIMAX(TOTALDEMAND ~ TEMPERATURE + PDQ(3, 1, 2) + SPQ(1, 1, 1, 48)))
+train_set <- dfts_nsw[1:(n-48*7), ]
+test_set <- dfts_nsw[(n-48*7-1):n, ]
+```
+
+
+```{r}
+fit_fr <- train_set %>% 
+  model(
+    arima_fr = ARIMA(TOTALDEMAND ~ pdq(d=1) + PDQ(0,0,0) +
+                        fourier(period = 48, K = 8) +
+                        fourier(period = 48*7, K = 4) +
+                        fourier(period = 48*365, K = 4))
+  )
 
 ```
 
+
+
+```{r}
+# Forecasting
+forecasts_fr <- fit_fr %>%
+  forecast(h=48*7)
+
+```
+
+```{R}
+  combined_data <- df %>%
+    left_join(forecasts_fr, by = "DATETIME") %>% 
+    filter(DATETIME >= ymd("2018-06-20") & DATETIME <= ymd("2018-06-30"))
+
+  ggplot(combined_data) +
+    geom_line(aes(x = DATETIME, y = TOTALDEMAND.x, color = "Actual Demand"), size = 1.5) +
+    geom_line(aes(x = DATETIME, y = .mean, color = "Forecast Demand"), size = 1.5) +
+    scale_color_manual(values = c("Actual Demand" = "black",
+                                  "Forecast Demand" = "red")) +
+    labs(title = "Total Demand Forecast vs Actual",
+         x = "Time",
+         y = "Total Demand",
+         color = "Legend") +
+    theme_minimal()
+```
+
+
+
+
+```{r}
+#evaluate_forecast(df, forecasts_fr)
+accuracy(forecasts_fr, df)
+```
+
+```{r}
+
+e
+
+```
+
+## Normal SAMIRA
+```{r}
+
+fit <- train_set %>% 
+  model(
+    arima = ARIMA(TOTALDEMAND ~ pdq(d=1) + PDQ(D=1, period=48))
+  )
+
+```
+
+
+```{r}
+
+forecasts <- fit %>% 
+  forecast(h=48*7)
+
+```
+
+```{r}
+accuracy(forecasts, df)
+
+```
+
+```{R}
+  combined_data <- df %>%
+    left_join(forecasts, by = "DATETIME") %>% 
+    filter(DATETIME >= ymd("2018-06-20") & DATETIME <= ymd("2018-06-30"))
+
+  ggplot(combined_data) +
+    geom_line(aes(x = DATETIME, y = TOTALDEMAND.x, color = "Actual Demand"), size = 1.5) +
+    geom_line(aes(x = DATETIME, y = .mean, color = "Forecast Demand"), size = 1.5) +
+    scale_color_manual(values = c("Actual Demand" = "black",
+                                  "Forecast Demand" = "red")) +
+    labs(title = "Total Demand Forecast vs Actual",
+         x = "Time",
+         y = "Total Demand",
+         color = "Legend") +
+    theme_minimal()
+```
+
+
+The auto arima gets  ARIMA(2,1,2)(2,1,0)[48]
+
+# Try adding temperature
+```{r}
+
+  
+fit_temp <- train_set %>% 
+  model(
+    arima_temp = ARIMA(TOTALDEMAND ~ pdq(2,1,2) + PDQ(2,1,0, period=48) +
+                         TEMPERATURE)
+  )
+
+
+```
+
+
+```{r}
+
+forecasts_temp <- fit_temp %>% 
+  forecast(h=48, test_set)
+
+```
+
+```{r}
+accuracy(forecasts_temp, df)
+
+```
+
+
+
+
+```{r}
+
+
+evaluate_forecast <- function(actual_data, forecast_data, start_date, end_date, benchmark) {
+  
+  # Merge actual and forecast data
+  combined_data <- actual_data %>%
+    left_join(forecast_data, by = "DATETIME") %>% 
+    filter(DATETIME >= start_date & DATETIME <= end_date)
+  
+  # Calculate accuracy metrics
+  accuracy_metrics <- accuracy(forecast_data, actual_data)
+  
+  # Print accuracy metrics
+  print(accuracy_metrics)
+  
+  # Create a plot to compare actual vs forecast
+  if (benchmark) {
+    p <- ggplot(combined_data) +
+      geom_line(aes(x = DATETIME, y = TOTALDEMAND.x, color = "Actual Demand"), size = 1.5) +
+      geom_line(aes(x = DATETIME, y = .mean, color = "Forecast Demand"), size = 1.5) +
+      geom_line(aes(x = DATETIME, y = FORECASTDEMAND.x, color = "Benchmark"), size = 1.5) +
+      scale_color_manual(values = c("Actual Demand" = "black", "Forecast Demand" = "red", "Benchmark" = "blue")) +
+      labs(title = "Total Demand Forecast vs Actual",
+           x = "Time",
+           y = "Total Demand",
+           color = "Legend") +
+      theme_minimal()
+  } else {
+    p <- ggplot(combined_data) +
+      geom_line(aes(x = DATETIME, y = TOTALDEMAND.x, color = "Actual Demand"), size = 1.5) +
+      geom_line(aes(x = DATETIME, y = .mean, color = "Forecast Demand"), size = 1.5) +
+      scale_color_manual(values = c("Actual Demand" = "black", "Forecast Demand" = "red")) +
+      labs(title = "Total Demand Forecast vs Actual",
+           x = "Time",
+           y = "Total Demand",
+           color = "Legend") +
+      theme_minimal()
+  }
+  
+  # Print the plot
+  print(p)
+}
+
+```
+
+```{r}
+evaluate_forecast(df,forecasts_temp,ymd("2018-06-28"), ymd("2018-06-30"),FALSE)
+
+```
+
+# Adding Holiday
+
+```{r}
+fit_temp_holiday <- train_set %>% 
+  model(
+    arima_temp = ARIMA(TOTALDEMAND ~ pdq(2,1,2) + PDQ(2,1,0, period=48) +
+                         TEMPERATURE + IsHoliday)
+  )
+
+
+
+```
+
+```{r}
+
+forecasts_temp_holiday <- fit_temp %>% 
+  forecast(h=48, test_set)
+
+```
+
+```{r}
+
+evaluate_forecast(df,forecasts_temp_holiday,ymd("2018-06-28"), ymd("2018-06-30"),FALSE)
+
+```
+
+############################
+
+ TRY FORECAST 1-WEEK AHEAD
+
+###########################
