@@ -634,7 +634,11 @@ df_nsw %>%
        x = "Temperature",
        y = "Electricity Demand")
 
+
+
+
 ```
+
 
 
 ```{r}
@@ -970,20 +974,28 @@ dfts_demand_nsw %>%
 
 ```
 
+KPSS suggests after differencing the model is stationary. (Both non-seasonal and seasonal)
+
+
 ```{r}
 dfts_demand_nsw %>% 
   mutate(diff_TOTALDEMAND = difference(TOTALDEMAND, 48)) %>% 
-  ACF(diff_TOTALDEMAND, lag_max = 336) %>% 
+  ACF(diff_TOTALDEMAND, lag_max = 336*2) %>% 
   autoplot()
+
 
 dfts_demand_nsw %>% 
   mutate(diff_TOTALDEMAND = difference(TOTALDEMAND, 48)) %>% 
-  mutate(diff2_TOTALDEMAND = difference(diff_TOTALDEMAND, 48)) %>% 
-  ACF(diff2_TOTALDEMAND, lag_max = 336) %>% 
+  PACF(diff_TOTALDEMAND, lag_max = 336) %>% 
   autoplot()
+
 ```
 
+ACF and PACF after first order differencing. 
 
+PACF significant lag at lag 1, 49, 97, ... Suggest at least AR(1) and SAR(1)
+
+Seasonal: Significant at multiple lags, 96, 192, 240, 360 suggests at least MA(2) and SMA(2)
 
 
 ```{r}
@@ -1107,36 +1119,6 @@ df_nsw <- left_join(df_lj, df_forecastdemand_nsw, by='DATETIME')
 ```
 
 
-```{r}
-library(dplyr)
-library(tidyr)
-library(purrr)
-
-# Function to expand daily data frames
-expand_daily_data <- function(df, date_column_name, variables) {
-  df %>%
-    mutate(DATETIME = map(DATE, ~ seq(as.POSIXct(paste(.x, "00:00:00")),
-                                      as.POSIXct(paste(.x, "23:30:00")),
-                                      by = "30 min"))) %>%
-    unnest(DATETIME) %>%
-    select(DATETIME, all_of(variables))  # Preserve other relevant variables
-}
-
-# Expand df_solar_expo_nsw
-df_solar_expo_expanded <- expand_daily_data(df_solar_expo_nsw, "DATE", c("Solar_exposure"))
-
-# Expand df_rainfall_nsw
-df_rainfall_expanded <- expand_daily_data(df_rainfall_nsw, "DATE", c("Rainfall_amount"))
-
-```
-
-```{r}
-
-df_nsw <- df_nsw %>%
-  left_join(df_solar_expo_expanded, by = "DATETIME") %>%
-  left_join(df_rainfall_expanded, by = "DATETIME")
-
-```
 
 ```{r}
 # Uses the latest last change date
@@ -1156,11 +1138,21 @@ df_forecastdemand_nsw <- data_forecastdemand_nsw %>%
 df_nsw$FORECASTDEMAND <- na.spline(df_nsw$FORECASTDEMAND)
 check_for_na(df_nsw)
 ```
+```{r}
 
+
+df_nsw <- left_join(df_lj, df_forecastdemand_nsw, by='DATETIME')
+
+```
 
 ```{r}
 df <- df_nsw %>% 
   select(DATETIME, TOTALDEMAND, TEMPERATURE, FORECASTDEMAND, IsHoliday) %>% 
+  mutate(
+    TEMPERATURE_SQ = TEMPERATURE^2,
+    IsWeekday = ifelse(wday(DATETIME, week_start = 1) %in% 1:5, 1, 0),
+    IsHoliday = ifelse(IsHoliday == TRUE, 1, 0)
+  ) %>%
   as_tsibble(index = DATETIME)
 
 
@@ -1171,8 +1163,8 @@ df <- df_nsw %>%
 start_date <- ymd("2015-06-01")
 end_date <- ymd("2018-06-30")
 
-dfts_nsw <- df_nsw %>% 
-  select(DATETIME, TOTALDEMAND, TEMPERATURE, FORECASTDEMAND, IsHoliday) %>% 
+dfts_nsw <- df %>% 
+  select(DATETIME, TOTALDEMAND, TEMPERATURE, FORECASTDEMAND,TEMPERATURE_SQ, IsHoliday, IsWeekday) %>% 
   as_tsibble(index = DATETIME) %>% 
   filter(DATETIME >= start_date & DATETIME <= end_date)
 
@@ -1184,34 +1176,84 @@ dfts_nsw <- df_nsw %>%
 ```{r}
 n <- nrow(dfts_nsw)
 
-train_set <- dfts_nsw[1:(n-48*7), ]
-test_set <- dfts_nsw[(n-48*7-1):n, ]
+train_set <- dfts_nsw[1:(n-48), ]
+test_set <- dfts_nsw[(n-47):n, ]
+```
+
+```{r}
+
+train_set %>% gg_tsdisplay(difference(TOTALDEMAND, lag=48) %>% difference(),
+                           plot_type='partial', lag_max = 48*7) +
+  labs(title = 'Double Differenced', y='')
+
 ```
 
 
 ```{r}
-fit_fr <- train_set %>% 
+fit <- train_set %>% 
   model(
     arima_fr = ARIMA(TOTALDEMAND ~ pdq(d=1) + PDQ(0,0,0) +
                         fourier(period = 48, K = 8) +
                         fourier(period = 48*7, K = 4) +
-                        fourier(period = 48*365, K = 4))
+                        fourier(period = 48*365, K = 4)),
+    sarima_auto = ARIMA(TOTALDEMAND ~ pdq(d=1) + PDQ(D=1, period=48)),
+    sarima_auto_temp = ARIMA(TOTALDEMAND ~ pdq(d=1) + PDQ(D=1, period=48) + TEMPERATURE + TEMPERATURE_SQ),
+    sarima_212210_temp = ARIMA(TOTALDEMAND ~ pdq(2,1,2) + PDQ(2,1,0, period=48) + TEMPERATURE + TEMPERATURE_SQ)
+    
   )
 
 ```
 
+```{r}
+## Show all models fitted
 
+fit %>% pivot_longer(everything(), names_to = "Model name", values_to = "Orders")
+
+## Order by smallest BIC
+glance(fit) %>% arrange(BIC) %>% select(.model:BIC)
+```
 
 ```{r}
 # Forecasting
-forecasts_fr <- fit_fr %>%
-  forecast(h=48*7)
+forecasts <- fit %>%
+  forecast(test_set)
 
 ```
 
-```{R}
+```{r}
+forecasts %>% accuracy(df) %>% arrange(RMSE, 'desc')
+
+```
+
+
+```{r}
+
+
+forecasts %>% autoplot(tail(dfts_nsw, 96), level=NULL, size=1.5, alpha=0.7)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+############# NOT RELAVENT (KEEP JUST IN CASE)
+
+```
   combined_data <- df %>%
-    left_join(forecasts_fr, by = "DATETIME") %>% 
+    left_join(forecasts, by = "DATETIME") %>% 
     filter(DATETIME >= ymd("2018-06-20") & DATETIME <= ymd("2018-06-30"))
 
   ggplot(combined_data) +
@@ -1283,14 +1325,14 @@ accuracy(forecasts, df)
 
 The auto arima gets  ARIMA(2,1,2)(2,1,0)[48]
 
-# Try adding temperature
+# Try adding temperature^2
 ```{r}
 
   
 fit_temp <- train_set %>% 
   model(
     arima_temp = ARIMA(TOTALDEMAND ~ pdq(2,1,2) + PDQ(2,1,0, period=48) +
-                         TEMPERATURE)
+                         TEMPERATURE_SQ)
   )
 
 
@@ -1363,13 +1405,13 @@ evaluate_forecast(df,forecasts_temp,ymd("2018-06-28"), ymd("2018-06-30"),FALSE)
 
 ```
 
-# Adding Holiday
+# Adding IsHoliday and IsWeekday
 
 ```{r}
 fit_temp_holiday <- train_set %>% 
   model(
     arima_temp = ARIMA(TOTALDEMAND ~ pdq(2,1,2) + PDQ(2,1,0, period=48) +
-                         TEMPERATURE + IsHoliday)
+                         TEMPERATURE + IsHoliday + IsWeekday)
   )
 
 
@@ -1379,8 +1421,13 @@ fit_temp_holiday <- train_set %>%
 ```{r}
 
 forecasts_temp_holiday <- fit_temp %>% 
-  forecast(h=48, test_set)
+  forecast(test_set)
 
+```
+
+```{r}
+
+accuracy(forecasts_temp_holiday, df)
 ```
 
 ```{r}
@@ -1389,8 +1436,45 @@ evaluate_forecast(df,forecasts_temp_holiday,ymd("2018-06-28"), ymd("2018-06-30")
 
 ```
 
-############################
+```{r}
 
- TRY FORECAST 1-WEEK AHEAD
 
-###########################
+arima_fit <- train_set %>% 
+  model(
+    sarima_111212 = ARIMA(TOTALDEMAND ~ pdq(1,1,1) + PDQ(2,1,2, period=48))
+  )
+
+```
+
+
+```
+library(dplyr)
+library(tidyr)
+library(purrr)
+
+# Function to expand daily data frames
+expand_daily_data <- function(df, date_column_name, variables) {
+  df %>%
+    mutate(DATETIME = map(DATE, ~ seq(as.POSIXct(paste(.x, "00:00:00")),
+                                      as.POSIXct(paste(.x, "23:30:00")),
+                                      by = "30 min"))) %>%
+    unnest(DATETIME) %>%
+    select(DATETIME, all_of(variables))  # Preserve other relevant variables
+}
+
+# Expand df_solar_expo_nsw
+df_solar_expo_expanded <- expand_daily_data(df_solar_expo_nsw, "DATE", c("Solar_exposure"))
+
+# Expand df_rainfall_nsw
+df_rainfall_expanded <- expand_daily_data(df_rainfall_nsw, "DATE", c("Rainfall_amount"))
+
+```
+
+```
+
+df_nsw <- df_nsw %>%
+  left_join(df_solar_expo_expanded, by = "DATETIME") %>%
+  left_join(df_rainfall_expanded, by = "DATETIME")
+
+```
+
