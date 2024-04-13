@@ -6,36 +6,17 @@ coursecode: "ZZSC9020"
 authors:
   - "Chuang, Keith – z5449930"
   - "Gandhi, Rupesh – z5368767"
-  - "Melbin, Joseph – z5394849"
-  - "CHIU, Yiu Tong – z5039191"
+
 date: "2024-04-20"
 
 Acknowledgements: 
-  - "TBC."
-  - "TBC."
-  - "TBC."
-  - "TBC."
+  - "Sonit Singh - Project Consultant"
+  - "Wei Tan - Project Consultant"
 
 output: html_document
 
----
-
-# Abstract
-
----
-
-# Contents
-
----
-
-# 1.0 Introduction
-
----
-
-# Packages
-
 ```
-
+# Install required packages, for the environment
 install.packages("readr")
 install.packages("here")
 install.packages("ggplot2")
@@ -55,6 +36,7 @@ install.packages('forecast)
 
 
 ```{r, message=FALSE}
+# Import libraries 
 library(ggplot2)
 library(tidyverse)
 library(lubridate)
@@ -424,143 +406,6 @@ df_forecastdemand_nsw_max <- data_forecastdemand_nsw %>%
 
 ```
 
-
-## Solar Exposure
-
-```{r}
-head(solar_expo_nsw)
-```
-
-
-```{r}
-
-df_solar_expo_nsw <- solar_expo_nsw %>% 
-  mutate(
-    Year = as.integer(Year), 
-    Month = as.integer(Month), 
-    Day = as.integer(Day),
-    DATE = make_date(Year, Month, Day),
-    Solar_exposure = `Daily global solar exposure (MJ/m*m)`
-  ) %>% 
-  filter(DATE >= as.Date("2010-01-01") & DATE <= as.Date("2021-03-17")) %>% 
-  select(DATE, Solar_exposure)
-
-
-```
-
-
-```{r}
-check_for_na(df_solar_expo_nsw)
-
-```
-
-1 NA value is found.
-
-
-
-```{r}
-df_solar_expo_nsw <- df_solar_expo_nsw %>% 
-  filter(!is.na(Solar_exposure))
-
-df_solar_expo_nsw %>%
-  ggplot(aes(DATE, Solar_exposure)) +
-  geom_line() +
-  geom_vline(data = data.frame(Year = unique(year(df_solar_expo_nsw$DATE))), 
-             aes(xintercept = as.Date(paste0(Year, "-01-01"))), 
-             linetype = "solid", color = "red") +
-  theme_minimal() +
-  ggtitle("Solar Exposure Over Time in NSW") +
-  xlab("Year") +
-  ylab("Solar Exposure")
-
-```
-
-```{r}
-df_solar_expo_nsw %>%
-  mutate(Month = month(DATE, label = TRUE)) %>%
-  ggplot(aes(x = Month, y = Solar_exposure)) +
-  geom_boxplot() +
-  theme_minimal() +
-  labs(title = "Solar Exposure by Month", x = "Month", y = "Solar Exposure")
-```
-
-### Rainfall 
-
-```{r}
-head(rainfall_nsw)
-
-```
-
-```{r}
-
-df_rainfall_nsw <- rainfall_nsw %>%
-  mutate(
-    Year = as.integer(Year), 
-    Month = as.integer(Month), 
-    Day = as.integer(Day),
-    DATE = make_date(Year, Month, Day),
-    Rainfall_amount = `Rainfall amount (millimetres)`
-  ) %>% 
-  filter(DATE >= as.Date("2010-01-01") & DATE <= as.Date("2021-03-17")) %>% 
-  select(DATE, Rainfall_amount)
-```
-
-
-```{r}
-
-check_for_na(df_rainfall_nsw)
-
-
-```
-93 NA values, convert to median 
-
-
-```{r}
-# Calculate the median of Rainfall_amount excluding NA values
-median_rainfall <- median(df_rainfall_nsw$Rainfall_amount, na.rm = TRUE)
-
-# Impute NA values in Rainfall_amount with the median
-df_rainfall_nsw <- df_rainfall_nsw %>%
-  mutate(Rainfall_amount = ifelse(is.na(Rainfall_amount), median_rainfall, Rainfall_amount))
-
-
-```
-
-```{r}
-df_rainfall_nsw %>% 
-  ggplot(aes(x=DATE, y=Rainfall_amount)) +
-  geom_line() +
-  theme_minimal()
-
-
-```
-
-##### GDP
-
-```{r}
-head(gdp)
-
-```
-
-
-```{r}
-
-df_gdp <- gdp %>% 
-  pivot_longer(cols=as.character(seq(1960,2022)),
-                               names_to = 'Year',
-                               values_to = 'GDP') %>% 
-  mutate(Year = as.integer(Year)) %>% 
-  select(Year, GDP) %>% 
-  filter(Year >= 2010)
-
-```
-
-```{r}
-head(df_gdp)
-
-```
-
-
 ## Bivariate Analysis
 
 ##### Holidays 
@@ -585,8 +430,6 @@ df_demand_nsw %>%
 
 
 ```
-
-
 
 
 ##### Demand vs Temperature
@@ -615,6 +458,7 @@ nrow(excluded_data)
 
 unique(excluded_data$Source)
 ```
+
 Correlation testing
 ```{r}
 
