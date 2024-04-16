@@ -1,0 +1,276 @@
+---
+title: "additional code"
+author: "Rupesh Gandhi"
+date: "2024-04-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+############# NOT RELAVENT (KEEP JUST IN CASE)
+
+```
+  combined_data <- df %>%
+    left_join(forecasts, by = "DATETIME") %>% 
+    filter(DATETIME >= ymd("2018-06-20") & DATETIME <= ymd("2018-06-30"))
+
+  ggplot(combined_data) +
+    geom_line(aes(x = DATETIME, y = TOTALDEMAND.x, color = "Actual Demand"), size = 1.5) +
+    geom_line(aes(x = DATETIME, y = .mean, color = "Forecast Demand"), size = 1.5) +
+    scale_color_manual(values = c("Actual Demand" = "black",
+                                  "Forecast Demand" = "red")) +
+    labs(title = "Total Demand Forecast vs Actual",
+         x = "Time",
+         y = "Total Demand",
+         color = "Legend") +
+    theme_minimal()
+```
+
+
+
+
+```{r}
+#evaluate_forecast(df, forecasts_fr)
+accuracy(forecasts_fr, df)
+```
+
+```{r}
+
+e
+
+```
+
+## Normal SAMIRA
+```{r}
+
+fit <- train_set %>% 
+  model(
+    arima = ARIMA(TOTALDEMAND ~ pdq(d=1) + PDQ(D=1, period=48))
+  )
+
+```
+
+
+```{r}
+
+forecasts <- fit %>% 
+  forecast(h=48*7)
+
+```
+
+```{r}
+accuracy(forecasts, df)
+
+```
+
+```{R}
+  combined_data <- df %>%
+    left_join(forecasts, by = "DATETIME") %>% 
+    filter(DATETIME >= ymd("2018-06-20") & DATETIME <= ymd("2018-06-30"))
+
+  ggplot(combined_data) +
+    geom_line(aes(x = DATETIME, y = TOTALDEMAND.x, color = "Actual Demand"), size = 1.5) +
+    geom_line(aes(x = DATETIME, y = .mean, color = "Forecast Demand"), size = 1.5) +
+    scale_color_manual(values = c("Actual Demand" = "black",
+                                  "Forecast Demand" = "red")) +
+    labs(title = "Total Demand Forecast vs Actual",
+         x = "Time",
+         y = "Total Demand",
+         color = "Legend") +
+    theme_minimal()
+```
+
+
+The auto arima gets  ARIMA(2,1,2)(2,1,0)[48]
+
+# Try adding temperature^2
+```{r}
+
+  
+fit_temp <- train_set %>% 
+  model(
+    arima_temp = ARIMA(TOTALDEMAND ~ pdq(2,1,2) + PDQ(2,1,0, period=48) +
+                         TEMPERATURE_SQ)
+  )
+
+
+```
+
+
+```{r}
+
+forecasts_temp <- fit_temp %>% 
+  forecast(h=48, test_set)
+
+```
+
+```{r}
+accuracy(forecasts_temp, df)
+
+```
+
+
+
+
+```{r}
+
+
+evaluate_forecast <- function(actual_data, forecast_data, start_date, end_date, benchmark) {
+  
+  # Merge actual and forecast data
+  combined_data <- actual_data %>%
+    left_join(forecast_data, by = "DATETIME") %>% 
+    filter(DATETIME >= start_date & DATETIME <= end_date)
+  
+  # Calculate accuracy metrics
+  accuracy_metrics <- accuracy(forecast_data, actual_data)
+  
+  # Print accuracy metrics
+  print(accuracy_metrics)
+  
+  # Create a plot to compare actual vs forecast
+  if (benchmark) {
+    p <- ggplot(combined_data) +
+      geom_line(aes(x = DATETIME, y = TOTALDEMAND.x, color = "Actual Demand"), size = 1.5) +
+      geom_line(aes(x = DATETIME, y = .mean, color = "Forecast Demand"), size = 1.5) +
+      geom_line(aes(x = DATETIME, y = FORECASTDEMAND.x, color = "Benchmark"), size = 1.5) +
+      scale_color_manual(values = c("Actual Demand" = "black", "Forecast Demand" = "red", "Benchmark" = "blue")) +
+      labs(title = "Total Demand Forecast vs Actual",
+           x = "Time",
+           y = "Total Demand",
+           color = "Legend") +
+      theme_minimal()
+  } else {
+    p <- ggplot(combined_data) +
+      geom_line(aes(x = DATETIME, y = TOTALDEMAND.x, color = "Actual Demand"), size = 1.5) +
+      geom_line(aes(x = DATETIME, y = .mean, color = "Forecast Demand"), size = 1.5) +
+      scale_color_manual(values = c("Actual Demand" = "black", "Forecast Demand" = "red")) +
+      labs(title = "Total Demand Forecast vs Actual",
+           x = "Time",
+           y = "Total Demand",
+           color = "Legend") +
+      theme_minimal()
+  }
+  
+  # Print the plot
+  print(p)
+}
+
+```
+
+```{r}
+evaluate_forecast(df,forecasts_temp,ymd("2018-06-28"), ymd("2018-06-30"),FALSE)
+
+```
+
+# Adding IsHoliday and IsWeekday
+
+```{r}
+fit_temp_holiday <- train_set %>% 
+  model(
+    arima_temp = ARIMA(TOTALDEMAND ~ pdq(2,1,2) + PDQ(2,1,0, period=48) +
+                         TEMPERATURE + IsHoliday + IsWeekday)
+  )
+
+
+
+```
+
+```{r}
+
+forecasts_temp_holiday <- fit_temp %>% 
+  forecast(test_set)
+
+```
+
+```{r}
+
+accuracy(forecasts_temp_holiday, df)
+```
+
+```{r}
+
+evaluate_forecast(df,forecasts_temp_holiday,ymd("2018-06-28"), ymd("2018-06-30"),FALSE)
+
+```
+
+```{r}
+
+
+arima_fit <- train_set %>% 
+  model(
+    sarima_111212 = ARIMA(TOTALDEMAND ~ pdq(1,1,1) + PDQ(2,1,2, period=48))
+  )
+
+```
+
+
+```
+library(dplyr)
+library(tidyr)
+library(purrr)
+
+# Function to expand daily data frames
+expand_daily_data <- function(df, date_column_name, variables) {
+  df %>%
+    mutate(DATETIME = map(DATE, ~ seq(as.POSIXct(paste(.x, "00:00:00")),
+                                      as.POSIXct(paste(.x, "23:30:00")),
+                                      by = "30 min"))) %>%
+    unnest(DATETIME) %>%
+    select(DATETIME, all_of(variables))  # Preserve other relevant variables
+}
+
+# Expand df_solar_expo_nsw
+df_solar_expo_expanded <- expand_daily_data(df_solar_expo_nsw, "DATE", c("Solar_exposure"))
+
+# Expand df_rainfall_nsw
+df_rainfall_expanded <- expand_daily_data(df_rainfall_nsw, "DATE", c("Rainfall_amount"))
+
+```
+
+```
+
+df_nsw <- df_nsw %>%
+  left_join(df_solar_expo_expanded, by = "DATETIME") %>%
+  left_join(df_rainfall_expanded, by = "DATETIME")
+
+```
+
+
