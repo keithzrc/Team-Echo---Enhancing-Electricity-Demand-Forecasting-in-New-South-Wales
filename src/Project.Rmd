@@ -920,7 +920,7 @@ check_for_na(df_lj)
 
 ```{r}
 
-df_nsw <- left_join(df_lj, df_forecastdemand_nsw, by='DATETIME')
+df_nsw <- left_join(df_lj, df_forecastdemand_nsw_max, by='DATETIME')
 
 ```
 
@@ -929,7 +929,7 @@ df_nsw <- left_join(df_lj, df_forecastdemand_nsw, by='DATETIME')
 ```{r}
 # Uses the latest last change date
 df_forecastdemand_nsw <- data_forecastdemand_nsw %>% 
-  mutate(DATETIME = as_date(DATETIME, tz='AUstralia/Brisbane')) %>% 
+  mutate(DATETIME = as_datetime(DATETIME, tz='AUstralia/Brisbane')) %>% 
   group_by(DATETIME) %>%
   filter(LASTCHANGED == max(LASTCHANGED)) %>%
   summarize(FORECASTDEMAND = mean(FORECASTDEMAND), .groups = 'drop') %>% 
@@ -955,9 +955,7 @@ df_nsw <- left_join(df_lj, df_forecastdemand_nsw, by='DATETIME')
 df <- df_nsw %>% 
   select(DATETIME, TOTALDEMAND, TEMPERATURE, FORECASTDEMAND, IsHoliday) %>% 
   mutate(
-    TEMPERATURE_SQ = TEMPERATURE^2,
-    IsWeekday = ifelse(wday(DATETIME, week_start = 1) %in% 1:5, 1, 0),
-    IsHoliday = ifelse(IsHoliday == TRUE, 1, 0)
+    TEMPERATURE_SQ = TEMPERATURE^2
   ) %>%
   as_tsibble(index = DATETIME)
 
@@ -970,7 +968,7 @@ start_date <- ymd("2015-06-01")
 end_date <- ymd("2018-06-30")
 
 dfts_nsw <- df %>% 
-  select(DATETIME, TOTALDEMAND, TEMPERATURE, FORECASTDEMAND,TEMPERATURE_SQ, IsHoliday, IsWeekday) %>% 
+  select(DATETIME, TOTALDEMAND, TEMPERATURE, FORECASTDEMAND,TEMPERATURE_SQ) %>% 
   as_tsibble(index = DATETIME) %>% 
   filter(DATETIME >= start_date & DATETIME <= end_date)
 
@@ -988,9 +986,13 @@ test_set <- dfts_nsw[(n-47):n, ]
 
 ```{r}
 
-train_set %>% gg_tsdisplay(difference(TOTALDEMAND, lag=48) %>% difference(),
-                           plot_type='partial', lag_max = 48*7) +
-  labs(title = 'Double Differenced', y='')
+train_set %>% 
+  gg_tsdisplay(
+    difference(difference(TOTALDEMAND, lag = 48), lag = 1), 
+    plot_type = 'partial', 
+    lag_max = 48*7
+  ) +
+  labs(title = 'Double Differenced', y = '')
 
 ```
 
@@ -999,13 +1001,18 @@ train_set %>% gg_tsdisplay(difference(TOTALDEMAND, lag=48) %>% difference(),
 fit <- train_set %>% 
   model(
     arima_fr = ARIMA(TOTALDEMAND ~ pdq(d=1) + PDQ(0,0,0) +
-                        fourier(period = 48, K = 8) +
-                        fourier(period = 48*7, K = 4) +
-                        fourier(period = 48*365, K = 4)),
-    sarima_auto = ARIMA(TOTALDEMAND ~ pdq(d=1) + PDQ(D=1, period=48)),
-    sarima_auto_temp = ARIMA(TOTALDEMAND ~ pdq(d=1) + PDQ(D=1, period=48) + TEMPERATURE + TEMPERATURE_SQ),
-    sarima_212210_temp = ARIMA(TOTALDEMAND ~ pdq(2,1,2) + PDQ(2,1,0, period=48) + TEMPERATURE + TEMPERATURE_SQ)
+                        fourier(period = 48, K = 3) +     # Daily 
+                        fourier(period = 48*7, K = 3)),   # Weekly
+    sarima_212210 = ARIMA(TOTALDEMAND ~ pdq(2,1,2) + PDQ(2,1,0, period=48)),
     
+    sarima_212210_fr = ARIMA(TOTALDEMAND ~ pdq(2,1,2) + PDQ(2,1,0, period=48) +
+                        fourier(period = 48*7, K = 3)), # Weekly
+    
+    sarima_auto_temp = ARIMA(TOTALDEMAND ~ pdq(d=1) + PDQ(D=1, period=48) + TEMPERATURE + TEMPERATURE_SQ),
+    
+    sarima_212210_temp_fr = ARIMA(TOTALDEMAND ~ pdq(2,1,2) + PDQ(2,1,0, period=48) + 
+                                TEMPERATURE + TEMPERATURE_SQ +
+                                fourier(period = 48*7, K = 3))    # Weekly
   )
 
 ```
@@ -1035,6 +1042,128 @@ forecasts %>% accuracy(df) %>% arrange(RMSE, 'desc')
 ```{r}
 
 
-forecasts %>% autoplot(tail(dfts_nsw, 96), level=NULL, size=1.5, alpha=0.7)
+forecasts %>% autoplot(tail(dfts_nsw, 96), level=NULL, size=1.2, alpha=0.9)
 
+```
+
+
+
+```{r}
+# comparing adding fourier and without fourier
+
+selected_models_forecasts <- forecasts %>%
+  filter(.model %in% c('sarima_212210', 'sarima_212210_fr'))
+
+selected_models_forecasts %>% autoplot(tail(dfts_nsw, 96), level=NULL, size=1.2, alpha=0.9)
+```
+
+Selection of the final model:
+
+SARIMA_212210_fr
+
+
+
+```{r}
+
+initial_train_end <- nrow(dfts_nsw) - 48 * 5  # Training data ends 10 days before the dataset's end
+forecast_horizon <- 48  # Forecasting one day ahead (48 half-hour intervals)
+forecasts_list <- vector("list", 5)  # Store each forecast
+
+# Loop through each forecast iteration
+for (i in 1:5) {
+  # Define the training data up to the current endpoint
+  train_data <- dfts_nsw[1:(initial_train_end + (i - 1) * forecast_horizon), ]
+  
+  cat(sprintf("Fit %d starting: %s\n", i, Sys.time()))
+  # Fit the ARIMA model with Fourier terms
+  fit_arima <- train_data %>%
+    model(sarima_212210_temp_fr = ARIMA(TOTALDEMAND ~ pdq(2, 1, 2) + PDQ(2, 1, 0, period = 48) +
+                                        TEMPERATURE + TEMPERATURE_SQ +
+                                        fourier(K = 3, period = 48*7)))
+  
+  cat(sprintf("Fit %d done: %s\n", i, Sys.time()))
+  # Define new_data for forecasting: next 48 observations beyond the training set
+  test_set <- dfts_nsw[(initial_train_end + (i - 1) * forecast_horizon + 1):(initial_train_end + i * forecast_horizon), ]
+
+  # Forecast using the model
+  forecasts <- forecast(fit_arima, new_data = test_set)
+  forecasts_list[[i]] <- forecasts
+}
+
+# Combine forecasts into a single tsibble for plotting or evaluation
+combined_forecasts <- bind_rows(forecasts_list) %>% as_tibble()
+
+
+```
+
+
+
+```{r}
+# Extract forecast means
+forecast_means <- combined_forecasts %>%
+  select(.mean) %>%
+  pull()
+
+# Create a time series object from the forecasted means
+pred_arima_ts <- ts(forecast_means, start = c(ceiling((initial_train_end + 1) / 48), (initial_train_end + 1) %% 48), frequency = 48)
+
+# Actual data corresponding to the forecast periods
+actual_indices <- (initial_train_end + 1):(initial_train_end + 10 * forecast_horizon)
+actual_data <- dfts_nsw$TOTALDEMAND[actual_indices]
+
+# Calculate accuracy metrics
+accuracy_metrics <- accuracy(pred_arima_ts, actual_data)
+print(accuracy_metrics)
+
+
+```
+
+```{r}
+
+# Create a data frame for plotting
+plot_data <- data.frame(
+  Time = seq_along(actual_data),
+  Actual = actual_data,
+  Forecast = as.numeric(pred_arima_ts)
+)
+
+# Creating the plot
+p <- ggplot(plot_data, aes(x = Time)) +
+  geom_line(aes(y = Actual, colour = "Actual"), size = 1) +
+  geom_line(aes(y = Forecast, colour = "Forecast"), size = 1, linetype = "dashed") +
+  scale_color_manual(values = c("Actual" = "blue", "Forecast" = "red")) +
+  labs(title = "ARIMA Forecast vs Actual Data",
+       x = "Time (in 48 half-hour intervals per day)",
+       y = "Total Demand",
+       colour = "Legend") +
+  theme_minimal()
+
+# Display the plot
+print(p)
+
+
+
+
+```
+
+
+
+
+
+
+
+```{r}
+
+# Set up parallel processing
+num_cores <- detectCores() - 4
+cl <- makeCluster(num_cores)
+registerDoParallel(cl)
+plan(multisession, workers = num_cores)
+```
+
+
+```{r}
+stopCluster(cl)
+registerDoSEQ()  # Switch back to sequential processing
+plan(sequential)
 ```
