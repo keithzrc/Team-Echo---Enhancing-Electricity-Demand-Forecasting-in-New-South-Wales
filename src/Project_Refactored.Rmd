@@ -451,6 +451,22 @@ theme(plot.title = element_text(hjust = 0.5))
 
 ## Converts to Daily Data
 ```{r}
+
+df_solar_expo_nsw <- solar_expo_nsw %>% 
+  mutate(Solar_exposure = `Daily global solar exposure (MJ/m*m)`,
+         DATE = make_date(year = Year, month = Month, day = Day)) %>% 
+  filter(Year >= 2010 & Year <= 2022) %>% 
+  select(DATE, Solar_exposure) 
+  
+df_rainfall_nsw <- rainfall_nsw %>% 
+  mutate(Rainfall_amount = `Rainfall amount (millimetres)`,
+         DATE = make_date(year = Year, month = Month, day = Day)) %>% 
+  filter(Year >= 2010 & Year <= 2022) %>% 
+  select(DATE, Rainfall_amount) 
+
+```
+
+```{r}
 # Converts to daily data to match solar exposure and rainfall 
 df_nsw_daily <- df_nsw %>% 
   mutate(DATE = as.Date(DATETIME)) %>% 
