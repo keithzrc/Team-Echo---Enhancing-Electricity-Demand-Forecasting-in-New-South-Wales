@@ -1,13 +1,14 @@
 ---
-title: "Assessment 3: Group Project"
-team: "Team Echo"
-session: "Hexa 2, 2024"
-coursecode: "ZZSC9020"
-authors:
+Title: "Assessment 3: Group Project"
+Project Name: "Enhancing Electricity Demand Forecasting in New South Wales"
+Team: "Team Echo"
+Session: "Hexa 2, 2024"
+Coursecode: "ZZSC9020"
+Authors:
   - "Chuang, Keith – z5449930"
   - "Gandhi, Rupesh – z5368767"
 
-date: "2024-04-20"
+Date: "20 April 2024"
 
 Acknowledgements: 
   - "Sonit Singh - Project Consultant"
@@ -15,7 +16,7 @@ Acknowledgements:
 
 output: html_document
 
-```
+```{r}
 # Install required packages, for the environment
 install.packages("readr")
 install.packages("here")
@@ -25,22 +26,29 @@ install.packages("lubridate")
 install.packages("mgcv")
 install.packages("fpp2")
 install.packages("fable")
-install.packages('feasts')
-install.packages('corrplot')
+install.packages("feasts")
 install.packages("corrplot")
-install.packages('reshape2')
-install.packages('tseries')
-install.packages('forecast)
+install.packages("reshape2")
+install.packages("tseries")
+install.packages("forecast")
+install.packages("tssible")
+install.packages("reshape2")
+install.pacakges("fpp3")
+install.packages("fabletools")
+install.packages("doParallel")
+install.packages("zoo")
 
 ```
 
-
 ```{r, message=FALSE}
+
 # Import libraries 
+library(readr)
 library(ggplot2)
 library(tidyverse)
 library(lubridate)
 library(mgcv)
+library(here)
 library(fpp3)
 library(fable)
 library(fabletools)
@@ -52,8 +60,8 @@ library(tseries)
 library(tsibble)
 library(doParallel)
 library(zoo)
-```
 
+```
 
 ---
 # 4.0 Exploratory Data Analysis
@@ -69,31 +77,37 @@ circumstances.
 ### Provided Data 
 
 ```{r, message=FALSE}
+
 #Shared data for the project
 data_temperature_nsw <- read_csv(unzip("../data/NSW/temperature_nsw.csv.zip", files = "temperature_nsw.csv", exdir = tempdir())[1])
 data_demand_nsw <- read_csv(unzip("../data/NSW/totaldemand_nsw.csv.zip", files = "totaldemand_nsw.csv", exdir = tempdir())[1])
+
 ```
 
 ```{r ,message=FALSE}
+
 #data extraction from Github
 data_forecastdemand_nsw_part1 <- read_csv(unzip("../data/NSW/forecastdemand/forecastdemand_part1.csv.zip", files = "forecastdemand_part1.csv", exdir = tempdir())[1])
 data_forecastdemand_nsw_part2 <- read_csv(unzip("../data/NSW/forecastdemand/forecastdemand_part2.csv.zip", files = "forecastdemand_part2.csv", exdir = tempdir())[1])
 data_forecastdemand_nsw_part3 <- read_csv(unzip("../data/NSW/forecastdemand/forecastdemand_part3.csv.zip", files = "forecastdemand_part3.csv", exdir = tempdir())[1])
 data_forecastdemand_nsw_part4 <- read_csv(unzip("../data/NSW/forecastdemand/forecastdemand_part4.csv.zip", files = "forecastdemand_part4.csv", exdir = tempdir())[1])
 data_forecastdemand_nsw_part5 <- read_csv(unzip("../data/NSW/forecastdemand/forecastdemand_part5.csv.zip", files = "forecastdemand_part5.csv", exdir = tempdir())[1])
+
 ```
 
 ```{r}
+
 # Combine all forecastdemand into 1 df
 data_forecastdemand_nsw <- bind_rows(data_forecastdemand_nsw_part1, data_forecastdemand_nsw_part2, data_forecastdemand_nsw_part3, data_forecastdemand_nsw_part4,data_forecastdemand_nsw_part5) 
 # Clear memory
 rm(data_forecastdemand_nsw_part1,data_forecastdemand_nsw_part2, data_forecastdemand_nsw_part3, data_forecastdemand_nsw_part4, data_forecastdemand_nsw_part5)
-```
 
+```
 
 ### 4.2.2 Sourced Data
 
 ```{r, message=FALSE}
+
 ## Reference: https://www.michaelplazzer.com/datasets/australian-public-holiday-data/
 
 holidays <- read_csv('../data/Aus_public_hols_2009-2022-1.csv')
@@ -108,11 +122,12 @@ solar_expo_nsw <- read_csv("../data/daily_solar_exposure_bankstown_airport/IDCJA
 rainfall_nsw <- read_csv("../data/daily_rainfall_bankstown_airport/IDCJAC0009_066137_1800_Data.csv")
 ## Reference: https://data.worldbank.org/indicator/NY.GDP.MKTP.CD?locations=AU
 gdp <- read_csv('../data/GDP.csv', skip=4) %>% filter(`Country Name` == 'Australia')
-```
 
+```
 
 ##### Functions to clean and wrangle data
 ``` {r}
+
 # Identification and Removal of Null Values: An anomaly was detected in Data, where a singular instance of a missing value (NA) was identified. Given the potential impact of missing data on the accuracy of our analysis, this NA value was promptly removed to maintain data integrity.
 
 check_for_na <- function(data) {
@@ -145,6 +160,7 @@ check_for_na <- function(data) {
 
 ### Wrangling function to align data re timeframes
 ```{r}
+
 # Converts string DATETIME into dttm and creates timestamp columns
 wrangle_demand_data <- function(df) {
   if ("DATETIME" %in% names(df)) {
@@ -163,19 +179,22 @@ wrangle_demand_data <- function(df) {
   }
   return(df)
 }
-```
 
+```
 
 ### Demand Data representation
 ```{r}
+
 head(data_demand_nsw)
 summary(data_demand_nsw)
 check_for_na(data_demand_nsw)
 df_demand_nsw <- wrangle_demand_data(data_demand_nsw)
 head(df_demand_nsw)
+
 ```
 
 ```{r}
+
 #The time series plot shows the fluctuation of electricity demand in New South Wales over 11 years. A clear seasonal pattern is observed, with peaks during winter and summer months, reflecting higher heating and cooling needs.
 
 # Calculate sequence of years
@@ -198,6 +217,7 @@ df_demand_nsw %>%
 ```
 
 ```{r , message=FALSE}
+
 #This set of line graphs illustrates the average electricity demand throughout a typical week in each month of the year, with lines representing different weeks within each month. 
 df_demand_nsw_monthly <- df_demand_nsw %>% 
   group_by(Month, WeekOfMonth, TimeOfDay) %>% 
@@ -217,8 +237,8 @@ df_demand_nsw_monthly %>%
 
 ```
 
-
 ```{r}
+
 # This plot prints the seasonal demand of electricity for entire data
 # Create a new column 'Season' based on the month
 df_demand_nsw_seasonly <- df_demand_nsw %>% 
@@ -242,10 +262,10 @@ df_demand_nsw_seasonly %>%
   theme(axis.text.x = element_text(angle = 0, hjust = 0.5),  # Improve readability of x-axis labels
         plot.title = element_text(hjust = 0.5))  # Center plot title
 
-
 ```
 
 ```{r ,message=FALSE}
+
 # This code snippet segments the demand data by day of the week and time of day and calculates the mean demand for each combination. Then, it creates a line plot to visualize the mean total demand by time of day, with each line representing a different day of the week.
 
 df_demand_nsw_weekly <- df_demand_nsw %>% 
@@ -261,12 +281,11 @@ df_demand_nsw_weekly %>% ggplot(aes(x = TimeOfDay, y = MeanDemand)) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 0.5), plot.title = element_text(hjust = 0.5))
 
-
 ```
+
 Weekday Demand (Monday to Friday): There is a pronounced double-peaked pattern on weekdays, with electricity demand rising sharply in the morning, tapering slightly midday, and then peaking again in the early evening. This likely reflects routine domestic and commercial activities, such as people getting ready for work and school in the morning and then returning home and using various appliances in the evening.
 Weekend Demand (Saturday and Sunday): The weekend pattern, while still showing two peaks similar to the weekdays, has less overall demand.
 Overall Trends: Across all days, there is a significant drop in demand late at night, when most residential and commercial activities cease, until early morning when the demand begins to rise with the start of a new day.
-
 
 ```{r , message=FALSE}
 
@@ -287,13 +306,13 @@ df_demand_nsw_daily %>%
   theme(plot.title = element_text(hjust = 0.5)
 )
 
-
 ```
 
 there is a strong seasonality as predicted by the data
 ### Temperature data
 
 ```{r}
+
 summary(data_temperature_nsw)
 check_for_na(data_temperature_nsw)
 df_temperature_nsw <- wrangle_demand_data(data_temperature_nsw)
@@ -301,12 +320,12 @@ head(df_temperature_nsw)
 
 ```
 
-
 ##### Align temperature data with demand data
 
 Since the temperature dataset does not have a constant time frequency, we adjust an aceptable range of time to align with the 0 minutes and 30 minutes mark of demand data.
 
 ```{r}
+
 df_temperature_nsw <- df_temperature_nsw %>%
   mutate(out_of_line = !(((Minute >= 55) | (Minute <= 5)) | ((Minute >= 25) & (Minute <= 35))))
 
@@ -317,9 +336,8 @@ sum_out_of_line <- sum(df_temperature_nsw$out_of_line, na.rm = TRUE)
 print(sum_out_of_line)
 
 ```
+
 There are 16089 numbers of out of line data.
-
-
 
 ```{r}
 
@@ -339,11 +357,14 @@ df_aligned_temperature_nsw <- df_temperature_nsw %>%
 ```
 
 ```{r}
+
 head(df_aligned_temperature_nsw)
+
 ```
 
 
 ```{r}
+
 #This code produces a plot with temperature data over time, blue vertical lines indicating the start of each year.
 
 df_aligned_temperature_nsw %>% 
@@ -358,12 +379,15 @@ df_aligned_temperature_nsw %>%
   labs(x = "Year", y = "Temperature", title = "Temperature variation over time") +
   theme(plot.title = element_text(hjust = 0.5)
 )
+
 ```
+
 The data shows strong seasonality in the variation
 
 ## Forecast Data
 
 ```{r}
+
 head(data_forecastdemand_nsw)
 
 df_forecastdemand_nsw_min <- data_forecastdemand_nsw %>%
@@ -397,12 +421,13 @@ df_demand_nsw %>%
   theme_minimal() +
   theme(plot.title = element_text(hjust = 0.5))
 
-
 ```
+
 The box plot compares electricity demand on holidays versus non-holidays. It appears that the median electricity demand on holidays is lower than on non-holidays. There are several extreme values that deviate from the typical ranges on both types of days.
 
 ##### Demand vs Temperature
 ```{r}
+
 # Inner join to get only matched data
 df_nsw <- inner_join(df_demand_nsw, df_aligned_temperature_nsw, by = "DATETIME")
 
@@ -420,18 +445,21 @@ excluded_data <- excluded_data %>%
 nrow(excluded_data)
 
 unique(excluded_data$Source)
+
 ```
 
 Correlation testing
+
 ```{r}
 
   cor.test(df_nsw$TEMPERATURE, df_nsw$TOTALDEMAND, use = "pearson")
 
 ```
+
 p-value is small reject null-hypothesis.
 
-
 ```{r}
+
 df_nsw %>% 
   ggplot(aes(x = TEMPERATURE, y = TOTALDEMAND, color = "Data Points")) +  # Set color aesthetic
   geom_point(color = "red") +  # Change color of data points to blue
@@ -460,9 +488,7 @@ plot <- df_nsw %>%
 # Print the plot
 print(plot)
 
-
 ```
-
 
 
 ```{r}
@@ -481,8 +507,8 @@ df_nsw_daily <- df_nsw %>%
            DayOfWeek = factor(wday(DATE, label=TRUE), levels = c("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")))
   
 df_nsw_daily <- inner_join(df_nsw_daily, df_solar_expo_nsw, by = 'DATE')
-```
 
+```
 
 
 ```{r}
@@ -495,9 +521,8 @@ df_nsw_daily_long <- df_nsw_daily %>%
     pivot_longer(cols = c("Daily_Mean_Temperature", "Daily_Max_Temperature", "Daily_Min_Temperature"),
                names_to = "Temperature_Type",
                values_to = "Temperature")
+
 ```
-
-
 
 ##### Daily Demand vs Solar Exposure
 ```{r}
@@ -510,7 +535,6 @@ ggplot(df_nsw_daily_long, aes(x = Solar_exposure, y = Demand)) +
   ylab("Demand") +
   facet_wrap(~Demand_Type, scales = "free_y") + # Create a separate panel for each Demand_Type
   theme_minimal()
-
 
 ```
 
@@ -528,14 +552,13 @@ ggplot(df_nsw_daily_long, aes(x = Solar_exposure, y = Temperature)) +
   facet_wrap(~Temperature_Type, scales = "free_y") + 
   theme_minimal()
 
-
 ```
 
 
 ```{r}
+
 df_nsw_daily <- inner_join(df_nsw_daily, df_rainfall_nsw)
 df_nsw_daily_long <- inner_join(df_nsw_daily_long, df_rainfall_nsw)
-
 
 
 # Plotting with faceting
@@ -547,7 +570,6 @@ ggplot(df_nsw_daily_long, aes(x = Rainfall_amount, y = Demand)) +
   ylab("Electricity Demand") +
   facet_wrap(~Demand_Type, scales = "free_y") + # Create a separate panel for each Demand_Type
   theme_minimal()
-
 
 
 ```
@@ -565,7 +587,6 @@ cor.test(df_nsw_daily$Daily_Min_Temperature, df_nsw_daily$Solar_exposure, use="p
 ```
 
 
-
 ##### GDP vs Demand
 
 ```{r}
@@ -576,6 +597,7 @@ df_demand_nsw_yearly = df_demand_nsw %>%
   summarise(Avg_yearly_demand = mean(TOTALDEMAND))
 
 df_nsw_yearly <- inner_join(df_demand_nsw_yearly, df_gdp, by = 'Year')
+
 ```
 
 ```{r}
@@ -585,7 +607,6 @@ df_nsw_yearly %>%
   geom_line() +
   geom_smooth()
 
-
 ```
 
 ```{r}
@@ -593,9 +614,8 @@ df_nsw_yearly %>%
 cor.test(df_nsw_yearly$GDP, df_nsw_yearly$Avg_yearly_demand, use="pearson")
 
 ```
+
 Not statistically significant. Accept null hypothesis, no correlation.
-
-
 
 #### Forecast Data
 
@@ -609,6 +629,7 @@ df_forecastdemand_nsw <- data_forecastdemand_nsw %>%
 ```
 
 ```{r}
+
 head(df_forecastdemand_nsw)
 
 ```
@@ -618,10 +639,10 @@ head(df_forecastdemand_nsw)
 
 df_max <- inner_join(df_forecastdemand_nsw_max, df_demand_nsw, by='DATETIME')
 df_min <- inner_join(df_forecastdemand_nsw_min, df_demand_nsw, by='DATETIME')
+
 ```
 
 ```{r}
-
 
 df_max <- df_max %>% 
   mutate(DATE = as.Date(DATETIME))
@@ -651,6 +672,7 @@ sampled_df_min <- df_min %>%
 
 
 ```{r}
+
 ggplot(sampled_df_max, aes(x = DATETIME)) + 
   geom_line(aes(y = FORECASTDEMAND, color = "Forecast Demand"), linetype = "dashed", size = 1.2) + 
   geom_line(aes(y = TOTALDEMAND, color = "Total Demand"), size = 1.2) +
@@ -668,10 +690,10 @@ ggplot(sampled_df_max, aes(x = DATETIME)) +
         axis.text.x = element_text(angle = 45, hjust = 1)) +
   facet_wrap(~DATE, ncol = 3, scales = "free_x")
 
-
 ```
 
 ```{r}
+
 ggplot(sampled_df_min, aes(x = DATETIME)) + 
   geom_line(aes(y = FORECASTDEMAND, color = "Forecast Demand"), linetype = "dashed", size = 1.2) + 
   geom_line(aes(y = TOTALDEMAND, color = "Total Demand"), size = 1.2) +
@@ -689,7 +711,6 @@ ggplot(sampled_df_min, aes(x = DATETIME)) +
         axis.text.x = element_text(angle = 45, hjust = 1)) +
   facet_wrap(~DATE, ncol = 3, scales = "free_x")
 
-
 ```
 
 ##### Accuracy
@@ -701,6 +722,7 @@ df_nsw <- inner_join(df_nsw, df_forecastdemand_nsw_max, by='DATETIME')
 ```
 
 ```{r}
+
 #df_nsw %>%
   #select(DATETIME, FORECASTDEMAND.x, TOTALDEMAND) %>% 
   #summarise(MAE = mean(abs(FORECASTDEMAND.x - TOTALDEMAND), na.rm = TRUE))
@@ -713,7 +735,6 @@ df_nsw <- inner_join(df_nsw, df_forecastdemand_nsw_max, by='DATETIME')
 #df_nsw %>%
   #filter(TOTALDEMAND != 0) %>% # Avoid division by zero
   #summarise(MAPE = mean(abs((FORECASTDEMAND.x - TOTALDEMAND) / TOTALDEMAND), na.rm = TRUE) * 100)
-
 
 ```
 
@@ -741,7 +762,6 @@ corrplot(cor_matrix, method = "color", type = "full", order = "hclust",
 
 ```
 
-
 ##### Daily data
 
 ```{r}
@@ -761,9 +781,10 @@ corrplot(cor_matrix2, method = "color", type = "full", order = "hclust",
 ##### Autocorrelation
 
 ```{r}
-dfts_demand_nsw <- as_tsibble(df_demand_nsw %>% select(DATETIME, TOTALDEMAND), index=DATETIME)
-```
 
+dfts_demand_nsw <- as_tsibble(df_demand_nsw %>% select(DATETIME, TOTALDEMAND), index=DATETIME)
+
+```
 
 
 ```{r, message=FALSE}
@@ -778,6 +799,7 @@ dfts_demand_nsw %>%
   features(diff_TOTALDEMAND, unitroot_kpss)
 
 dfts_demand_nsw %>% features(TOTALDEMAND, unitroot_ndiffs)
+
 ```
 
 
@@ -792,13 +814,12 @@ dfts_demand_nsw %>%
   mutate(diff_TOTALDEMAND = difference(TOTALDEMAND, 48)) %>% 
   features(diff_TOTALDEMAND, unitroot_kpss) 
 
-
 ```
 
 KPSS suggests after differencing the model is stationary. (Both non-seasonal and seasonal)
 
-
 ```{r}
+
 dfts_demand_nsw %>% 
   mutate(diff_TOTALDEMAND = difference(TOTALDEMAND, 48)) %>% 
   ACF(diff_TOTALDEMAND, lag_max = 336*2) %>% 
@@ -818,8 +839,8 @@ PACF significant lag at lag 1, 49, 97, ... Suggest at least AR(1) and SAR(1)
 
 Seasonal: Significant at multiple lags, 96, 192, 240, 360 suggests at least MA(2) and SMA(2)
 
-
 ```{r}
+
 par(mfrow = c(2, 2))
 acf(df_demand_nsw$TOTALDEMAND, 100, main = 'Autocorrelation')
 acf(df_demand_nsw$TOTALDEMAND, 1500, main = 'Autocorrelation')
@@ -828,11 +849,11 @@ pacf(df_demand_nsw$TOTALDEMAND, 1500, main = 'Partial autocorrelation')
 
 ```
 
-
 #### STL decomposition 
 ##### Extracts the trend and seasonal component of the 
 
 ```{r}
+
 electricity_ts <- df_demand_nsw %>%
   select(DATETIME, TOTALDEMAND) %>% 
   as_tsibble(index = DATETIME) 
@@ -851,11 +872,7 @@ decomposed <- electricity_ts %>%
 seasonal_components <- decomposed %>%
   select(trend, season_hour , season_day, season_week, season_year ) 
 
-
 ```
-
-
-
 
 ```{r}
 
@@ -871,8 +888,8 @@ lm <-
   lm(TOTALDEMAND ~ TimeOfDay + as.numeric(WeekOfMonth)+ as.numeric(DayOfWeek), data=df_demand_nsw)
 
 summary(lm)
-```
 
+```
 
 ## Re-cleaning Data
 ```{r}
@@ -883,7 +900,6 @@ df_demand_nsw <- df_demand_nsw %>%
       date(DATETIME) %in% holidays_nsw$Date ~ TRUE,
       TRUE ~ FALSE
     ))
-
 
 ```
 
@@ -924,8 +940,6 @@ df_nsw <- left_join(df_lj, df_forecastdemand_nsw_max, by='DATETIME')
 
 ```
 
-
-
 ```{r}
 # Uses the latest last change date
 df_forecastdemand_nsw <- data_forecastdemand_nsw %>% 
@@ -935,8 +949,6 @@ df_forecastdemand_nsw <- data_forecastdemand_nsw %>%
   summarize(FORECASTDEMAND = mean(FORECASTDEMAND), .groups = 'drop') %>% 
   ungroup() 
 
-
-
 ```
 
 ```{r}
@@ -944,8 +956,8 @@ df_forecastdemand_nsw <- data_forecastdemand_nsw %>%
 df_nsw$FORECASTDEMAND <- na.spline(df_nsw$FORECASTDEMAND)
 check_for_na(df_nsw)
 ```
-```{r}
 
+```{r}
 
 df_nsw <- left_join(df_lj, df_forecastdemand_nsw, by='DATETIME')
 
@@ -959,11 +971,10 @@ df <- df_nsw %>%
   ) %>%
   as_tsibble(index = DATETIME)
 
-
 ```
 
-
 ```{r}
+
 start_date <- ymd("2015-06-01")
 end_date <- ymd("2018-06-30")
 
@@ -972,12 +983,12 @@ dfts_nsw <- df %>%
   as_tsibble(index = DATETIME) %>% 
   filter(DATETIME >= start_date & DATETIME <= end_date)
 
-
 ```
 
 # Modelling 
 
 ```{r}
+
 n <- nrow(dfts_nsw)
 
 train_set <- dfts_nsw[1:(n-48), ]
@@ -998,6 +1009,7 @@ train_set %>%
 
 
 ```{r}
+
 fit <- train_set %>% 
   model(
     arima_fr = ARIMA(TOTALDEMAND ~ pdq(d=1) + PDQ(0,0,0) +
@@ -1034,13 +1046,13 @@ forecasts <- fit %>%
 ```
 
 ```{r}
+
 forecasts %>% accuracy(df) %>% arrange(RMSE, 'desc')
 
 ```
 
 
 ```{r}
-
 
 forecasts %>% autoplot(tail(dfts_nsw, 96), level=NULL, size=1.2, alpha=0.9)
 
@@ -1060,8 +1072,6 @@ selected_models_forecasts %>% autoplot(tail(dfts_nsw, 96), level=NULL, size=1.2,
 Selection of the final model:
 
 SARIMA_212210_fr
-
-
 
 ```{r}
 
@@ -1093,10 +1103,7 @@ for (i in 1:5) {
 # Combine forecasts into a single tsibble for plotting or evaluation
 combined_forecasts <- bind_rows(forecasts_list) %>% as_tibble()
 
-
 ```
-
-
 
 ```{r}
 # Extract forecast means
@@ -1114,7 +1121,6 @@ actual_data <- dfts_nsw$TOTALDEMAND[actual_indices]
 # Calculate accuracy metrics
 accuracy_metrics <- accuracy(pred_arima_ts, actual_data)
 print(accuracy_metrics)
-
 
 ```
 
@@ -1141,16 +1147,7 @@ p <- ggplot(plot_data, aes(x = Time)) +
 # Display the plot
 print(p)
 
-
-
-
 ```
-
-
-
-
-
-
 
 ```{r}
 
@@ -1160,7 +1157,6 @@ cl <- makeCluster(num_cores)
 registerDoParallel(cl)
 plan(multisession, workers = num_cores)
 ```
-
 
 ```{r}
 stopCluster(cl)
