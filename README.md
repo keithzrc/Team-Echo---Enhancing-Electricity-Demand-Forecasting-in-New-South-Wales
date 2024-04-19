@@ -1,23 +1,16 @@
 # Welcome to ZZSC9020 GitHub repository for group E
 
-This GitHub repository is the main point of access for students and lecturers of the ZZSC9020 capstone course.
-
-In this repository, you will find the data to start developing your project. Also, we will use the repository to share code, documentation, data, models and other resources between the group members and course lecturers.
-
-Complete the information below regarding your group.
-
 ## Group and project information
 
 ### Group members and zIDs
 
-- Joseph Melbin (z5394849) - Team Lead
 - Rupesh Gandhi (z5368767) - Research Lead
 - Keith Chuang (z5449930) - Data Analyst
-- Yiu Tong Chiu (z5039191) - Data Analyst
+
 
 ### Brief project description
 
-Describe your project in one paragraph.
+This project provides a comprehensive analysis of electricity demand forecasting in New South Wales (NSW) using time-series modelling techniques. We utilized datasets spanning from January 2010 to March 2021, which include half-hourly electricity demand and temperature data, to develop and compare several forecasting models. The focus was on evaluating Autoregressive Integrated Moving Average (ARIMA) models enhanced with Fourier terms and exogenous variables such as Temperature. The methodology and outcomes from this study are thoroughly documented to facilitate replication and further research in this vital area of energy economics.
 
 ## Repository structure
 
