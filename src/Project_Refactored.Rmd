@@ -457,12 +457,21 @@ df_solar_expo_nsw <- solar_expo_nsw %>%
          DATE = make_date(year = Year, month = Month, day = Day)) %>% 
   filter(Year >= 2010 & Year <= 2022) %>% 
   select(DATE, Solar_exposure) 
+
+df_solar_expo_nsw <- df_solar_expo_nsw %>% 
+  filter(!is.na(Solar_exposure))
   
 df_rainfall_nsw <- rainfall_nsw %>% 
   mutate(Rainfall_amount = `Rainfall amount (millimetres)`,
          DATE = make_date(year = Year, month = Month, day = Day)) %>% 
   filter(Year >= 2010 & Year <= 2022) %>% 
   select(DATE, Rainfall_amount) 
+
+median_rainfall <- median(df_rainfall_nsw$Rainfall_amount, na.rm = TRUE)
+# Impute NA values in Rainfall_amount with the median
+
+df_rainfall_nsw <- df_rainfall_nsw %>%
+  mutate(Rainfall_amount = ifelse(is.na(Rainfall_amount), median_rainfall, Rainfall_amount))
 
 ```
 
@@ -545,7 +554,7 @@ cor.test(df_nsw_daily$Daily_Min_Temperature, df_nsw_daily$Solar_exposure, use="p
 
 ## Rainfall vs Daily Demand
 
-```{r, warning=FASLE, message=FALSE}
+```{r}
 df_nsw_daily <- inner_join(df_nsw_daily, df_rainfall_nsw)
 df_nsw_daily_long <- inner_join(df_nsw_daily_long, df_rainfall_nsw)
 
@@ -1057,7 +1066,10 @@ benchmark_test <- dfts_nsw[initial_train_end:nrow(dfts_nsw),]
 benchmark_accuracy <- accuracy(benchmark_test$FORECASTDEMAND, benchmark_test$TOTALDEMAND)
 print(benchmark_accuracy)
 
+benchmark_test <- benchmark_test %>% 
+  mutate(Benchmark = FORECASTDEMAND)
 ```
+
 
 ```{r}
 full_data <- benchmark_test %>%
