@@ -44,6 +44,10 @@ library(forecast)
 library(tsibble)
 library(zoo)
 library(future)
+library(bookdown)
+library(reshape2)
+library(readr)
+library(here)
 
 ```
 
@@ -161,7 +165,6 @@ wrangle_demand_data <- function(df) {
   return(df)
 }
 ```
-
 
 ```{r}
 summary(data_demand_nsw)
@@ -295,7 +298,6 @@ df_demand_nsw_daily %>%
 ```
 We see some extremes lows, seems to be the effect of holidays, will dive into that later.
 
-
 ## Temperature
 
 ```{r}
@@ -309,9 +311,8 @@ head(df_temperature_nsw)
 
 The temperature data does not have constant update time, to have it better align with the Demand data, we 
 
-
-
 ```{r}
+
 df_temperature_nsw <- df_temperature_nsw %>%
   mutate(out_of_line = !(((Minute >= 55) | (Minute <= 5)) | ((Minute >= 25) & (Minute <= 35))))
 
@@ -322,8 +323,8 @@ sum_out_of_line <- sum(df_temperature_nsw$out_of_line, na.rm = TRUE)
 print(sum_out_of_line)
 
 ```
-There are 16089 numbers of out of line data.
 
+There are 16089 numbers of out of line data.
 
 ```{r}
 
@@ -343,10 +344,13 @@ df_aligned_temperature_nsw <- df_temperature_nsw %>%
 ```
 
 ```{r}
+
 head(df_aligned_temperature_nsw)
+
 ```
 
 ```{r}
+
 #This code produces a plot with temperature data over time, blue vertical lines indicating the start of each year.
 
 df_aligned_temperature_nsw %>% 
@@ -361,16 +365,15 @@ df_aligned_temperature_nsw %>%
   labs(x = "Year", y = "Temperature", title = "Temperature variation over time") +
   theme(plot.title = element_text(hjust = 0.5)
 )
+
 ```
 The data shows strong seasonality in the variation.
-
 
 ## Forecast Data
 
 The lastest LASTCHANGED forecastdemand for each DATETIME is selected.
 ```{r}
 head(data_forecastdemand_nsw)
-
 
 df_forecastdemand_nsw <- data_forecastdemand_nsw %>%
   group_by(DATETIME) %>%
@@ -401,14 +404,13 @@ df_demand_nsw %>%
   theme_minimal() +
   theme(plot.title = element_text(hjust = 0.5))
 
-
 ```
+
 The box plot compares electricity demand on holidays versus non-holidays. It appears that the median electricity demand on holidays is lower than on non-holidays. There are several extreme values that deviate from the typical ranges on both types of days.
-
-
 
 ## Demand vs Temperature
 ```{r}
+
 # Inner join to get only matched data
 df_nsw <- inner_join(df_demand_nsw, df_aligned_temperature_nsw, by = "DATETIME")
 
@@ -426,17 +428,19 @@ excluded_data <- excluded_data %>%
 nrow(excluded_data)
 
 unique(excluded_data$Source)
+
 ```
 
 Correlation testing
 ```{r}
+
 cor.test(df_nsw$TEMPERATURE, df_nsw$TOTALDEMAND, use = "pearson")
 
 ```
 Pearson correlation test: p-value is small reject null-hypothesis, it is statistically significant to say the true correlation of demand and temperature is not equal to 0.
 
-
 ```{r}
+
 df_nsw %>% 
   ggplot(aes(x = TEMPERATURE, y = TOTALDEMAND, color = "Data Points")) +  # Set color aesthetic
   geom_point(color = "red") +  
@@ -445,11 +449,10 @@ df_nsw %>%
        y = "Electricity Demand") +
 theme(plot.title = element_text(hjust = 0.5))
 
-
-
 ```
 
 ## Converts to Daily Data
+
 ```{r}
 
 df_solar_expo_nsw <- solar_expo_nsw %>% 
@@ -476,6 +479,7 @@ df_rainfall_nsw <- df_rainfall_nsw %>%
 ```
 
 ```{r}
+
 # Converts to daily data to match solar exposure and rainfall 
 df_nsw_daily <- df_nsw %>% 
   mutate(DATE = as.Date(DATETIME)) %>% 
@@ -491,9 +495,8 @@ df_nsw_daily <- df_nsw %>%
            DayOfWeek = factor(wday(DATE, label=TRUE), levels = c("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")))
   
 df_nsw_daily <- inner_join(df_nsw_daily, df_solar_expo_nsw, by = 'DATE')
+
 ```
-
-
 
 ```{r}
 
@@ -505,8 +508,8 @@ df_nsw_daily_long <- df_nsw_daily %>%
     pivot_longer(cols = c("Daily_Mean_Temperature", "Daily_Max_Temperature", "Daily_Min_Temperature"),
                names_to = "Temperature_Type",
                values_to = "Temperature")
-```
 
+```
 
 ## Solar Exposure vs Daily Demand
 
@@ -520,7 +523,6 @@ ggplot(df_nsw_daily_long, aes(x = Solar_exposure, y = Demand)) +
   ylab("Demand") +
   facet_wrap(~Demand_Type, scales = "free_y") + # Create a separate panel for each Demand_Type
   theme_minimal()
-
 
 ```
 
@@ -538,8 +540,8 @@ ggplot(df_nsw_daily_long, aes(x = Solar_exposure, y = Temperature)) +
   facet_wrap(~Temperature_Type, scales = "free_y") + 
   theme_minimal()
 
-
 ```
+
 ```{r}
 
 cor.test(df_nsw_daily$Daily_Mean_Demand, df_nsw_daily$Solar_exposure, use="pearson")
@@ -551,14 +553,12 @@ cor.test(df_nsw_daily$Daily_Min_Temperature, df_nsw_daily$Solar_exposure, use="p
 
 ```
 
-
 ## Rainfall vs Daily Demand
 
 ```{r}
+
 df_nsw_daily <- inner_join(df_nsw_daily, df_rainfall_nsw)
 df_nsw_daily_long <- inner_join(df_nsw_daily_long, df_rainfall_nsw)
-
-
 
 # Plotting with faceting
 ggplot(df_nsw_daily_long, aes(x = Rainfall_amount, y = Demand)) +
@@ -570,17 +570,11 @@ ggplot(df_nsw_daily_long, aes(x = Rainfall_amount, y = Demand)) +
   facet_wrap(~Demand_Type, scales = "free_y") + # Create a separate panel for each Demand_Type
   theme_minimal()
 
-
-
 ```
-
-
 
 ## Forecast(Benchmark) vs Demand
 
-
 ```{r}
-
 
 df_benchmark <- inner_join(df_forecastdemand_nsw, df_demand_nsw, by='DATETIME')
 
@@ -588,29 +582,25 @@ df_benchmark <- inner_join(df_forecastdemand_nsw, df_demand_nsw, by='DATETIME')
 
 ```{r}
 
-
 df_benchmark <- df_benchmark %>% 
   mutate(DATE = as.Date(DATETIME))
 
 dates_2017 <- unique(df_benchmark %>% 
   filter(Year == 2017))
 
-
 set.seed(123)
 
 # Sample 6 random dates
 sampled_dates <- sample(dates_2017$DATE, 6)
 
-
-
 sampled_df <- df_benchmark %>%
   filter(DATE %in% sampled_dates)
-
 
 ```
 
 
 ```{r}
+
 ggplot(sampled_df, aes(x = DATETIME)) + 
   geom_line(aes(y = FORECASTDEMAND, color = "Forecast Demand"), linetype = "dashed", size = 1.2) + 
   geom_line(aes(y = TOTALDEMAND, color = "Total Demand"), size = 1.2) +
@@ -628,13 +618,12 @@ ggplot(sampled_df, aes(x = DATETIME)) +
         axis.text.x = element_text(angle = 45, hjust = 1)) +
   facet_wrap(~DATE, ncol = 3, scales = "free_x")
 
-
 ```
 
 The benchmark seems to be off, it does not accurately forecast the actual demand.
 
-
 ```{r}
+
 df_forecastdemand_nsw_new <- df_forecastdemand_nsw %>% 
   mutate(DATETIME = DATETIME - hours(10))
 
@@ -644,13 +633,11 @@ df_max2 <- inner_join(df_forecastdemand_nsw_new, df_demand_nsw, by='DATETIME')
 
 ```{r}
 
-
 df_max2 <- df_max2 %>% 
   mutate(DATE = as.Date(DATETIME))
 
 dates_2017_max2 <- unique(df_max2 %>% 
   filter(Year == 2017))
-
 
 set.seed(123)
 
@@ -658,15 +645,13 @@ set.seed(123)
 sampled_dates2 <- sample(dates_2017_max2$DATE, 6)
 
 
-
 sampled_df_max2 <- df_max2 %>%
   filter(DATE %in% sampled_dates2)
 
-
 ```
 
-
 ```{r}
+
 ggplot(sampled_df_max2, aes(x = DATETIME)) + 
   geom_line(aes(y = FORECASTDEMAND, color = "Forecast Demand"), linetype = "dashed", size = 1.2) + 
   geom_line(aes(y = TOTALDEMAND, color = "Total Demand"), size = 1.2) +
@@ -684,14 +669,11 @@ ggplot(sampled_df_max2, aes(x = DATETIME)) +
         axis.text.x = element_text(angle = 45, hjust = 1)) +
   facet_wrap(~DATE, ncol = 3, scales = "free_x")
 
-
 ```
 
 After adjusting the DATETIME of the benchmark by delaying it by 10 hours, we have observed a significant improvement in accuracy. Consequently, this revised benchmark will now serve as the new standard for comparing against our model.
 
-
 ## Correlation Heatmap - Demand
-
 ```{r}
 
 cor_df <- df_demand_nsw %>% 
@@ -700,17 +682,13 @@ cor_df <- df_demand_nsw %>%
   mutate(across(everything(), as.numeric)) %>% 
   select(-Day,-Hour)
 
-
 cor_matrix <- cor(cor_df)
-
 
 corrplot(cor_matrix, method = "color", type = "full", order = "hclust",
          tl.col = "black", tl.srt = 45, 
          addCoef.col = "black") 
 
-
 ```
-
 
 ## Correlation Heatmap - Daily data
 
@@ -731,12 +709,12 @@ corrplot(cor_matrix2, method = "color", type = "full", order = "hclust",
 ## STL decomposition
 
 ```{r}
+
 electricity_ts <- df_demand_nsw %>%
   select(DATETIME, TOTALDEMAND) %>% 
   as_tsibble(index = DATETIME) 
 
 ```
-
 
 ```{r}
 
@@ -745,12 +723,11 @@ decomposed <- electricity_ts %>%
                   robust = TRUE)) %>%
   components()
 
-
 decomposed %>% autoplot()
+
 ```
 
 The STL decomposition shows multiple seasonality, hourly, daily, weekly and yearly.
-
 
 ```{r}
 
@@ -774,13 +751,13 @@ Hourly seasonality seem to be weak.
 ## Autocorrelation
 
 ```{r}
-dfts_demand_nsw <- as_tsibble(df_demand_nsw %>% select(DATETIME, TOTALDEMAND), index=DATETIME)
-```
 
+dfts_demand_nsw <- as_tsibble(df_demand_nsw %>% select(DATETIME, TOTALDEMAND), index=DATETIME)
+
+```
 
 ### Non-Seasonal Differencing
 ```{r, message=FALSE}
-
 
 dfts_demand_nsw %>% features(TOTALDEMAND, unitroot_kpss)
 
@@ -792,16 +769,15 @@ dfts_demand_nsw %>%
 ### Seasonal Differencing
 
 ```{r}
+
 # 0.01 Non-stationary
 dfts_demand_nsw %>% 
   features(TOTALDEMAND, unitroot_kpss) 
-
 
 # 0.1 Stationary after first order differencing
 dfts_demand_nsw %>% 
   mutate(diff_TOTALDEMAND = difference(TOTALDEMAND, 48)) %>% 
   features(diff_TOTALDEMAND, unitroot_kpss) 
-
 
 ```
 The KPSS test suggests that after first-order differencing the model is stationary. (Both non-seasonal and seasonal)
@@ -809,11 +785,11 @@ The KPSS test suggests that after first-order differencing the model is stationa
 ### ACF and PACF after first-order differencing
 
 ```{r}
+
 dfts_demand_nsw %>% 
   mutate(diff_TOTALDEMAND = difference(TOTALDEMAND, 48)) %>% 
   ACF(diff_TOTALDEMAND, lag_max = 336*2) %>% 
   autoplot()
-
 
 dfts_demand_nsw %>% 
   mutate(diff_TOTALDEMAND = difference(TOTALDEMAND, 48)) %>% 
@@ -822,27 +798,28 @@ dfts_demand_nsw %>%
 
 ```
 
-
-
 # Modelling
 
 ## Data preperation for modelling
-
 
 Combining the data into a single dataframe
 ```{r}
 
 df_lj <- left_join(df_demand_nsw, df_aligned_temperature_nsw, by='DATETIME')
 check_for_na(df_lj)
+
 ```
 
 ```{r}
+
 # Fill NA values
 df_lj$TEMPERATURE <- na.spline(df_lj$TEMPERATURE)
+
 ```
 Fills NA values with na.spline()
 
 ```{r}
+
 # Uses the latest last change date
 df_forecastdemand_nsw <- data_forecastdemand_nsw %>% 
   mutate(DATETIME = as_datetime(DATETIME, tz='AUstralia/Brisbane')) %>% 
@@ -852,17 +829,17 @@ df_forecastdemand_nsw <- data_forecastdemand_nsw %>%
   summarize(FORECASTDEMAND = mean(FORECASTDEMAND), .groups = 'drop') %>% 
   ungroup() 
 
-
-
 ```
 
 ```{r}
 
 df_nsw <- left_join(df_lj, df_forecastdemand_nsw, by='DATETIME')
 check_for_na(df_nsw)
+
 ```
 
 ```{r}
+
 df <- df_nsw %>% 
   select(DATETIME, TOTALDEMAND, TEMPERATURE, FORECASTDEMAND) %>% 
   mutate(
@@ -870,14 +847,12 @@ df <- df_nsw %>%
   ) %>%
   as_tsibble(index = DATETIME)
 
-
 ```
-
-
 
 ## Model Comparison
 
 ```{r}
+
 start_date <- ymd("2015-06-01")
 end_date <- ymd("2018-06-30")
 
@@ -889,10 +864,12 @@ dfts_nsw <- df %>%
 ```
 
 ```{r}
+
 n <- nrow(dfts_nsw)
 
 train_set <- dfts_nsw[1:(n-48), ]
 test_set <- dfts_nsw[(n-47):n, ]
+
 ```
 
 ```{r}
@@ -909,6 +886,7 @@ train_set %>%
 
 ### Model Training on Train Set
 ```{r}
+
 fit <- train_set %>% 
   model(
     arima_fr = ARIMA(TOTALDEMAND ~ pdq(d=1) + PDQ(0,0,0) +
@@ -935,12 +913,13 @@ fit %>% pivot_longer(everything(), names_to = "Model name", values_to = "Orders"
 
 ## Order by smallest BIC
 glance(fit) %>% arrange(BIC) %>% select(.model:BIC)
-```
 
+```
 SARIMA_212210[48] with fourier terms and temperature gives the best AIC and BIC values, whereas ARIMA with fourier terms performs the worst.
 
 ### Model Forecast on Test Set
 ```{r}
+
 # Forecasting
 forecasts <- fit %>%
   forecast(test_set)
@@ -948,6 +927,7 @@ forecasts <- fit %>%
 ```
 
 ```{r}
+
 forecasts %>% accuracy(df) %>% arrange(RMSE, 'desc')
 
 ```
@@ -958,7 +938,6 @@ sarima_212210_fr shows a better performance than sarima_212210_temp_fr by small 
 forecasts %>% autoplot(tail(dfts_nsw, 96), level=NULL, size=1.2, alpha=0.9)
 
 ```
-
 
 ## Final Model - SARIMA_212210[48] with Weekly Fourier and Temperature
 
@@ -1005,11 +984,11 @@ for (i in 1:5) {
 # Combine forecasts into a single tsibble for plotting or evaluation
 combined_forecasts <- bind_rows(forecasts_list) %>% as_tibble()
 
-
 ```
 
 
 ```{r}
+
 # Extract forecast means
 forecast_means <- combined_forecasts %>%
   select(.mean) %>%
@@ -1025,7 +1004,6 @@ actual_data <- dfts_nsw$TOTALDEMAND[actual_indices]
 # Calculate accuracy metrics
 accuracy_metrics <- accuracy(pred_arima_ts, actual_data)
 print(accuracy_metrics)
-
 
 ```
 
@@ -1052,14 +1030,12 @@ p <- ggplot(plot_data, aes(x = Time)) +
 # Display the plot
 print(p)
 
-
-
-
 ```
 
 ## Comparison with Benchmark
 
 ```{r}
+
 benchmark_test <- dfts_nsw[initial_train_end:nrow(dfts_nsw),]
 
 # Calculate accuracy metrics
@@ -1068,10 +1044,11 @@ print(benchmark_accuracy)
 
 benchmark_test <- benchmark_test %>% 
   mutate(Benchmark = FORECASTDEMAND)
+
 ```
 
-
 ```{r}
+
 full_data <- benchmark_test %>%
   left_join(combined_forecasts, by = "DATETIME") %>%
   rename(Forecast = `.mean`)
@@ -1079,6 +1056,7 @@ full_data <- benchmark_test %>%
 ```
 
 ```{r}
+
 # Merge the data frames by 'Metric'
 comparison_table <- rbind(accuracy_metrics, benchmark_accuracy)
 
@@ -1107,10 +1085,7 @@ plot <- ggplot(full_data, aes(x = DATETIME)) +
 # Display the plot
 print(plot)
 
-
 ```
-
-
 # Conclusion
 
 The analytical journey within this report culminates in the validation of a SARIMA model incorporating weekly Fourier terms and temperature data as the most suitable for forecasting electricity demand in NSW. This model excels in capturing significant seasonal trends and responding to temperature fluctuations, thereby markedly improving forecast precision. Our findings demonstrate the potential of this model to robustly predict demand fluctuations, supporting more accurate and efficient operational planning. Future directions for this research include integrating additional predictive variables and further refining the model to enhance its adaptability and accuracy in response to changing demand patterns. This document details the methodologies and insights obtained, providing a foundation for further research and application in the field of energy demand forecasting.
