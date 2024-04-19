@@ -21,6 +21,8 @@ output:
     number_sections: yes
     toc_float: true
     toc_depth: 3
+    includes:
+      in_header: <style>figcaption { text-align: center; }</style>
 ---
 ---
 
@@ -45,9 +47,6 @@ library(tsibble)
 library(zoo)
 library(future)
 library(bookdown)
-library(reshape2)
-library(readr)
-library(here)
 
 ```
 
@@ -172,7 +171,7 @@ df_demand_nsw <- wrangle_demand_data(data_demand_nsw)
 head(df_demand_nsw)
 ```
 
-```{r}
+```{r yearly-demand-plot, fig.cap="Total Demand Over Time."}
 #The time series plot shows the fluctuation of electricity demand in New South Wales over 11 years. A clear seasonal pattern is observed, with peaks during winter and summer months, reflecting higher heating and cooling needs.
 
 # Calculate sequence of years
@@ -194,7 +193,7 @@ df_demand_nsw %>%
 
 ```
 
-```{r , message=FALSE}
+```{r monthly-demand-plot, message=FALSE, fig.cap="Weekly Pattern of Demand By Month."}
 #This set of line graphs illustrates the average electricity demand throughout a typical week in each month of the year, with lines representing different weeks within each month. 
 df_demand_nsw_monthly <- df_demand_nsw %>% 
   group_by(Month, WeekOfMonth, TimeOfDay) %>% 
@@ -219,7 +218,7 @@ There are some differences in the daily patterns across the months, which seem t
 
 Within each month, the weekly patterns remain relatively consistent, although there are slight variations in demand from week to week. This consistency indicates a stable electricity usage pattern within a month across different weeks.
 
-```{r}
+```{r seasonaly-demand-plot, fig.cap="Demand by Hour Across Seasons."}
 # This plot prints the seasonal demand of electricity for entire data
 # Create a new column 'Season' based on the month
 df_demand_nsw_seasonly <- df_demand_nsw %>% 
@@ -252,7 +251,7 @@ Summer (Cyan): The demand profile during Summer shows a peak in midday to aftern
 
 Winter (Purple): Winter shows distinct peaks in demand in the early morning and evening, likely due to heating requirements during the colder parts of the day, which aligns with our initial observations of potential seasonal impacts on electricity use.
 
-```{r ,message=FALSE}
+```{r ,message=FALSE, fig.cap="Mean Demand by Hour of Each Day of Week."}
 # This code snippet segments the demand data by day of the week and time of day and calculates the mean demand for each combination. Then, it creates a line plot to visualize the mean total demand by time of day, with each line representing a different day of the week.
 
 df_demand_nsw_weekly <- df_demand_nsw %>% 
@@ -274,8 +273,8 @@ Weekday Demand (Monday to Friday): There is a pronounced double-peaked pattern o
 Weekend Demand (Saturday and Sunday): The weekend pattern, while still showing two peaks similar to the weekdays, has less overall demand.
 Overall Trends: Across all days, there is a significant drop in demand late at night, when most residential and commercial activities cease, until early morning when the demand begins to rise with the start of a new day.
 
-```{r , message=FALSE}
-# This code snippet calculates the average daily demand by grouping the data by month and day. It then creates a line plot to visualize the trend of average daily demand over time, with smoothed lines representing the trend.```
+```{r Daily-Demand-plot, message=FALSE, fig.cap="Average Daily Demand."}
+# This code snippet calculates the average daily demand by grouping the data by month and day. It then creates a line plot to visualize the trend of average daily demand over time, with smoothed lines representing the trend.
 
 df_demand_nsw_daily <- df_demand_nsw %>%
   group_by(Month, Day) %>% 
@@ -309,12 +308,12 @@ head(df_temperature_nsw)
 
 ```
 
-The temperature data does not have constant update time, to have it better align with the Demand data, we 
+The temperature data does not have constant update times; to better align it with the demand data, we categorize the temperature readings into two groups: readings from 45 minutes past the hour to 14 minutes past the next hour are aligned as the 0-minute mark, and readings from 15 to 44 minutes past the hour are aligned as the 30-minute mark. This method ensures that the temperature data corresponds closely with the demand data's half-hour sampling interval.
 
 ```{r}
 
 df_temperature_nsw <- df_temperature_nsw %>%
-  mutate(out_of_line = !(((Minute >= 55) | (Minute <= 5)) | ((Minute >= 25) & (Minute <= 35))))
+  mutate(out_of_line = !(((Minute >= 45) | (Minute <= 14)) | ((Minute >= 15) & (Minute <= 44))))
 
 # Count how many intervals are out of the expected line
 sum_out_of_line <- sum(df_temperature_nsw$out_of_line, na.rm = TRUE)
@@ -349,7 +348,7 @@ head(df_aligned_temperature_nsw)
 
 ```
 
-```{r}
+```{r Temperature-plot, fig.cap="Temperature Over Time."}
 
 #This code produces a plot with temperature data over time, blue vertical lines indicating the start of each year.
 
@@ -385,7 +384,7 @@ df_forecastdemand_nsw <- data_forecastdemand_nsw %>%
 
 ## Holiday vs non-Holidays impact on Demand
 
-```{r}
+```{r demand-holiday-plot, fig.cap="Effect of Holidays on Demand."}
 
 df_demand_nsw <- df_demand_nsw %>% 
   mutate(Date = date(DATETIME)) %>% 
@@ -399,7 +398,7 @@ df_demand_nsw <- df_demand_nsw %>%
 df_demand_nsw %>% 
   ggplot(aes(x = IsHoliday, y = TOTALDEMAND)) +
   geom_boxplot(aes(fill=IsHoliday)) +
-  labs(title = "Comparing holiday demands",
+  labs(title = "Demand of Holidays vs Non-Holidays",
        x = "", y = "Demand") +
   theme_minimal() +
   theme(plot.title = element_text(hjust = 0.5))
@@ -439,7 +438,7 @@ cor.test(df_nsw$TEMPERATURE, df_nsw$TOTALDEMAND, use = "pearson")
 ```
 Pearson correlation test: p-value is small reject null-hypothesis, it is statistically significant to say the true correlation of demand and temperature is not equal to 0.
 
-```{r}
+```{r demand-temperature-plot, fig.cap="Relationship between Demand and Temperature."}
 
 df_nsw %>% 
   ggplot(aes(x = TEMPERATURE, y = TOTALDEMAND, color = "Data Points")) +  # Set color aesthetic
@@ -513,7 +512,7 @@ df_nsw_daily_long <- df_nsw_daily %>%
 
 ## Solar Exposure vs Daily Demand
 
-```{r}
+```{r solarexpo-demand-plot, fig.cap="Relationship between Solar Exposure and Daily Demand."}
 # Plotting with faceting
 ggplot(df_nsw_daily_long, aes(x = Solar_exposure, y = Demand)) +
   geom_point() +
@@ -528,7 +527,7 @@ ggplot(df_nsw_daily_long, aes(x = Solar_exposure, y = Demand)) +
 
 ## Solar Exposure vs Daily Temperature
 
-```{r, warning=FALSE}
+```{r solarexpo-temperature-plot, warning=FALSE, fig.cap="Relationship between Solar Exposure and Daily Temperature"}
 
 # Plotting with faceting
 ggplot(df_nsw_daily_long, aes(x = Solar_exposure, y = Temperature)) +
@@ -555,7 +554,7 @@ cor.test(df_nsw_daily$Daily_Min_Temperature, df_nsw_daily$Solar_exposure, use="p
 
 ## Rainfall vs Daily Demand
 
-```{r}
+```{r rainfall-demand-plot, message=FALSE, warning=FALSE, fig.cap="Relationship between Rainfall and Daily Demand."}
 
 df_nsw_daily <- inner_join(df_nsw_daily, df_rainfall_nsw)
 df_nsw_daily_long <- inner_join(df_nsw_daily_long, df_rainfall_nsw)
@@ -580,6 +579,7 @@ df_benchmark <- inner_join(df_forecastdemand_nsw, df_demand_nsw, by='DATETIME')
 
 ```
 
+Taking random samples from 2017.
 ```{r}
 
 df_benchmark <- df_benchmark %>% 
@@ -599,14 +599,14 @@ sampled_df <- df_benchmark %>%
 ```
 
 
-```{r}
+```{r benchmark-demand-plot, fig,cap="Benchmark versus Actual Demand."}
 
 ggplot(sampled_df, aes(x = DATETIME)) + 
   geom_line(aes(y = FORECASTDEMAND, color = "Forecast Demand"), linetype = "dashed", size = 1.2) + 
   geom_line(aes(y = TOTALDEMAND, color = "Total Demand"), size = 1.2) +
   geom_point(aes(y = FORECASTDEMAND, color = "Forecast Demand"), size = 2, alpha = 0.5) + 
   geom_point(aes(y = TOTALDEMAND, color = "Total Demand"), size = 2, alpha = 0.5) +
-  labs(title = "Forecast vs Total Demand on Random Days in 2017",
+  labs(title = "Benchmark Forecast vs Total Demand on Random Days in 2017",
        x = "Hour of the Day",
        y = "Demand",
        color = "Legend") +
@@ -650,14 +650,14 @@ sampled_df_max2 <- df_max2 %>%
 
 ```
 
-```{r}
+```{r shifted-benchmark-demand-plot, fig.cap="10-hours Backwards Benchmark versus Actual Demand."}
 
 ggplot(sampled_df_max2, aes(x = DATETIME)) + 
   geom_line(aes(y = FORECASTDEMAND, color = "Forecast Demand"), linetype = "dashed", size = 1.2) + 
   geom_line(aes(y = TOTALDEMAND, color = "Total Demand"), size = 1.2) +
   geom_point(aes(y = FORECASTDEMAND, color = "Forecast Demand"), size = 2, alpha = 0.5) + 
   geom_point(aes(y = TOTALDEMAND, color = "Total Demand"), size = 2, alpha = 0.5) +
-  labs(title = "Benchmark Forecast (Shifted Time) vs Total Demand on Random Days in 2017",
+  labs(title = "Benchmark Forecast (10-hours backward shifted) vs Total Demand on Random Days in 2017",
        x = "Hour of the Day",
        y = "Demand",
        color = "Legend") +
@@ -674,7 +674,7 @@ ggplot(sampled_df_max2, aes(x = DATETIME)) +
 After adjusting the DATETIME of the benchmark by delaying it by 10 hours, we have observed a significant improvement in accuracy. Consequently, this revised benchmark will now serve as the new standard for comparing against our model.
 
 ## Correlation Heatmap - Demand
-```{r}
+```{r cormap-demand, fig.cap="Correlation Map of Demand and Time."}
 
 cor_df <- df_demand_nsw %>% 
   select(-DATETIME, -REGIONID, -Date) %>% 
@@ -692,7 +692,7 @@ corrplot(cor_matrix, method = "color", type = "full", order = "hclust",
 
 ## Correlation Heatmap - Daily data
 
-```{r}
+```{r cormap-daily-data, fig.cap="Correlation Map of Daily Data."}
 
 cor_df2 <- df_nsw_daily %>% 
   select(-DATE, -WeekOfMonth, -DayOfWeek) 
@@ -716,7 +716,7 @@ electricity_ts <- df_demand_nsw %>%
 
 ```
 
-```{r}
+```{r stl-plot, fig.cap="STL Decomposition."}
 
 decomposed <- electricity_ts %>%
   model(STL = STL(TOTALDEMAND ~ season(window = "periodic"),
@@ -784,13 +784,15 @@ The KPSS test suggests that after first-order differencing the model is stationa
 
 ### ACF and PACF after first-order differencing
 
-```{r}
+```{r diff-ACF, fig.cap="Seasonally Differenced ACF plot of Demand Data."}
 
 dfts_demand_nsw %>% 
   mutate(diff_TOTALDEMAND = difference(TOTALDEMAND, 48)) %>% 
   ACF(diff_TOTALDEMAND, lag_max = 336*2) %>% 
   autoplot()
+```
 
+```{r diff-PACF, fig.cap="Seasonally Differenced PACF plot of Demand Data."}
 dfts_demand_nsw %>% 
   mutate(diff_TOTALDEMAND = difference(TOTALDEMAND, 48)) %>% 
   PACF(diff_TOTALDEMAND, lag_max = 336) %>% 
@@ -872,7 +874,7 @@ test_set <- dfts_nsw[(n-47):n, ]
 
 ```
 
-```{r}
+```{r tsdisplay, fig.cap="Residuals, ACF and PACF of Double Differenced Demand Data."}
 
 train_set %>% 
   gg_tsdisplay(
@@ -885,7 +887,7 @@ train_set %>%
 ```
 
 ### Model Training on Train Set
-```{r}
+```{r model-comparison-training}
 
 fit <- train_set %>% 
   model(
@@ -933,13 +935,43 @@ forecasts %>% accuracy(df) %>% arrange(RMSE, 'desc')
 ```
 sarima_212210_fr shows a better performance than sarima_212210_temp_fr by small margin. arima_fr performs worst again on the test set.
 
-```{r}
+```{r model-comparison-plot, fig.cap="Comparison of Model Forecasts."}
 
 forecasts %>% autoplot(tail(dfts_nsw, 96), level=NULL, size=1.2, alpha=0.9)
 
 ```
 
-## Final Model - SARIMA_212210[48] with Weekly Fourier and Temperature
+## Final Model
+
+<b>The ARIMA(2,1,2)(2,1,0) model with temperature and Fourier terms for seasonal adjustment is structured as follows:</b>
+
+$$
+(1 - \phi_1 B - \phi_2 B^2)(1 - \Phi_1 B^{48} - \Phi_2 B^{96}) (1 - B)^1 (1 - B^{48}) y_t = \\
+(1 + \theta_1 B + \theta_2 B^2) \epsilon_t + \beta_1 x_{1,t} + \beta_2 x_{2,t} + \beta_3 \sum_{k=1}^3 \left( \alpha_k \cos\left(\frac{2 \pi k t}{336}\right) + \gamma_k \sin\left(\frac{2 \pi k t}{336}\right) \right)
+$$
+
+
+**Where:**
+
+- \(y_t\) is the TOTALDEMAND at time \(t\),
+- \(\phi_1, \phi_2\) are the coefficients for the non-seasonal AR terms,
+- \(\Phi_1, \Phi_2\) are the coefficients for the seasonal AR terms,
+- \(\theta_1, \theta_2\) are the coefficients for the non-seasonal MA terms,
+- \(B\) is the backshift operator, \(B^k y_t = y_{t-k}\),
+- \(x_{1,t}\) is the TEMPERATURE at time \(t\),
+- \(x_{2,t}\) is the TEMPERATURE squared at time \(t\),
+- The Fourier terms for \(K=3\) and period \(336\) (hourly data over a week) are represented by cosine and sine functions where \(\alpha_k\) and \(\gamma_k\) are the coefficients for cosine and sine components respectively, \(t\) is the time index,
+- \(\beta_1, \beta_2, \beta_3\) are the coefficients for the TEMPERATURE, TEMPERATURE squared, and Fourier terms respectively,
+- \(\epsilon_t\) is the error term.
+
+**Differencing:**
+
+- \((1 - B)^1\) and \((1 - B^{48})\) represent the first and seasonal differencing, making the series stationary.
+
+**Notes:**
+
+- This model includes both non-seasonal and seasonal components, capturing patterns at different time scales.
+- Fourier terms are used to model weekly seasonal patterns that are not captured by simple seasonal differencing.
 
 We utilizes the roll forward validation method, to forecast 24 hours ahead 5 consecutive days.
 ```{r}
@@ -949,7 +981,7 @@ plan(multisession)
 ```
 
 
-```{r}
+```{r fianl-model-training}
 
 initial_train_end <- nrow(dfts_nsw) - 48 * 5  # Training data ends 5 days before the dataset's end
 forecast_horizon <- 48  # Forecasting one day ahead (48 half-hour intervals)
@@ -1007,7 +1039,7 @@ print(accuracy_metrics)
 
 ```
 
-```{r}
+```{r final-model-plot, fig.cap="Forecast of SARIMA_212210[48] with Weekly Fourier and Temperature." }
 
 # Create a data frame for plotting
 plot_data <- data.frame(
@@ -1066,7 +1098,7 @@ print(comparison_table)
 
 ```
 
-```{r}
+```{r fianl-model-benchmark-comparison-plot, fig.cap="Comparison of Benchmark and Our Final Model against the Actual Demand."}
 
 # Create the plot
 plot <- ggplot(full_data, aes(x = DATETIME)) +
